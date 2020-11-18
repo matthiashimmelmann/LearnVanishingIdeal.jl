@@ -104,7 +104,6 @@ function leastSquaresListOfEquations(points, listOfDegrees)
 	veronese = affineVeronese(n,var)
 	outputValues=[]
 	err = Inf
-	println("Der Suchraum hat Dimension: ",binomial(n+length(points[1]),n))
 
 	for combinations in startValueCombinations
 		for combination in combinations
