@@ -23,8 +23,16 @@ function jacobianProd(veronese, var)
 	return(tranMat*Mat)
 end
 
-function vandermonde(n,d,array)
+function vandermonde(n, d, array, proj=false)
 	exponents = vcat(map(i -> collect(Combinatorics.multiexponents(n,-i)), -d:0)...)
+	if (proj == true)
+		exponents = []
+		for k in n:-1:0
+			exp = collect(Combinatorics.multiexponents(length(array[1])-1,k))
+			[append!(entry,n-k) for entry in exp]
+			append!(exponents,exp)
+		end
+	end
 	output = Array{Float64,2}(undef, length(array), length(exponents))
 	for i in 1:length(array)
 		for j in 1:length(exponents)
@@ -111,17 +119,18 @@ function comparisonOfMethods(n,points,numEq,tau)
 	@polyvar projVar[1:length(projPoints[1])]
 	@polyvar var[1:length(points[1])]
 
-	veroneseProj = projVeronese(n,projVar)
-	veroProdProj = sum([projVeronese(n,point)*projVeronese(n,point)' for point in projPoints])/length(points)
-	jacoProdProj = evaluationOfMatrix(jacobianProd(veroneseProj,projVar), projPoints, projVar)
+	veroneseProj = projVeronese(n,var)
+	veroProdProj = sum([projVeronese(n,point)*projVeronese(n,point)' for point in points])/length(points)
+	jacoProdProj = evaluationOfMatrix(jacobianProd(veroneseProj,var), points, var)
 	svdSingular = svd(pinv(jacoProdProj)*veroProdProj)
 	firstS = [entry / maximum(svdSingular.S) for entry in svdSingular.S]
 	smallestS = firstS[length(firstS)-numEq+1]*tau
+	display(filter(p-> p<=smallestS, firstS))
 	numberOfSmallSingularValues = length(filter(p-> p<=smallestS, firstS))
 	firstV = [svdSingular.V[:,i] for i in (length(veroneseProj)-numberOfSmallSingularValues+1):length(veroneseProj)]
 	timer2 = round(Int64, time() * 1000)
 	try
-		Vandermonde = vandermonde(length(var),n,points)
+		Vandermonde = vandermonde(length(var),n,points,true)
 		svdVander = svd(Vandermonde)
 		secondS = [entry / maximum(svdVander.S) for entry in svdVander.S]
 		secondV = svdVander.V[:,(length(veroneseProj)-numberOfSmallSingularValues+1):length(veroneseProj)]
@@ -144,7 +153,7 @@ function weightedGradientDescent(points, n, var, curw0, nEq, maxIter, saverArray
 	for zero in zeroEntries
 		zeroMatrix[zero[2],zero[1]] = w0Matrix[zero[2],zero[1]]
 	end
-	curLoss = sum([(affineVeronese(n,points[j])'*w0Matrix)*saverArray[j]*w0Matrix'*affineVeronese(n,points[j]) for j in 1:length(points)])/length(points)+0.1*sum([entry.^2 for entry in zeroMatrix])
+	curLoss = sum([(projVeronese(n,points[j])'*w0Matrix)*saverArray[j]*w0Matrix'*projVeronese(n,points[j]) for j in 1:length(points)])/length(points)+0.1*sum([entry.^2 for entry in zeroMatrix])
 	i, prevLoss, lambda, prevw0Matrix = 1, curLoss+1, 0.1, w0Matrix+Matrix{Float64}(I, size(w0Matrix)[1], size(w0Matrix)[2])
 	while  (i < maxIter )#&& lambda > 10^(-10) && curLoss > 10^(-16) && sqrt(sum([sum((w0Matrix[i,:]-prevw0Matrix[i,:]).^2)/size(w0Matrix)[2] for i in 1:size(w0Matrix)[1]])/size(w0Matrix)[1]) > 10^(-14))
 		if ( curLoss > prevLoss )
@@ -163,9 +172,9 @@ function weightedGradientDescent(points, n, var, curw0, nEq, maxIter, saverArray
 		for zero in zeroEntries
 			zeroMatrix[zero[2],zero[1]] = w0Matrix[zero[2],zero[1]]
 		end
-		dLossHelper = 2*sum([(affineVeronese(n,points[j])*affineVeronese(n,points[j])')*w0Matrix*saverArray[j] for j in 1:length(points)])./length(points)+0.2*zeroMatrix
+		dLossHelper = 2*sum([(projVeronese(n,points[j])*projVeronese(n,points[j])')*w0Matrix*saverArray[j] for j in 1:length(points)])./length(points)+2*zeroMatrix
 		w0Matrix = w0Matrix - lambda * dLossHelper
-		curLoss = sum([(affineVeronese(n,points[j])'*w0Matrix)*saverArray[j]*w0Matrix'*affineVeronese(n,points[j]) for j in 1:length(points)])/length(points)+0.1*sum([entry.^2 for entry in zeroMatrix])
+		curLoss = sum([(projVeronese(n,points[j])'*w0Matrix)*saverArray[j]*w0Matrix'*projVeronese(n,points[j]) for j in 1:length(points)])/length(points)+0.1*sum([entry.^2 for entry in zeroMatrix])
 		i=i+1
 	end
 
@@ -174,7 +183,7 @@ end
 
 function sampsonDistance(points, nEq, n, var, startValues)
 	@polyvar zed[1:length(points[1])]
-	veronese = affineVeronese(n, zed)
+	veronese = projVeronese(n, zed)
 	Qstart = [start'*veronese for start in startValues]
 	J = [differentiate(q,zed) for q in Qstart]
 	matrix = Array{DynamicPolynomials.Polynomial,2}(undef, nEq, length(points[1]))
@@ -249,7 +258,7 @@ function fillUpWithZeros(combination, n, numEq,d)
 	zeroEntries = []
 
 	for i in 1:length(combination)
-		output = Array{Float64, 1}(undef, binomial(n+d,n))
+		output = Array{Float64, 1}(undef, binomial(n+d-1,n))
 		for j in 1:length(output)
 			if(j<=length(output)-length(combination[i]))
 				output[j]=0

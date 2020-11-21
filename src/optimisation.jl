@@ -36,13 +36,18 @@ end
   polynomial. Also, it uses a threshold of tau=1.5 and only 200 gradient
   descent steps.
 =#
-function leastSquaresListOfEquations_quick(points, listOfDegrees)
-	time1 = round(Int64, time() * 1000)
+function leastSquaresListOfEquations_quick(data, listOfDegrees, affine=true)
+	if affine == true
+		points = [vcat(point,[1]) for point in data]
+	else
+		points = data
+	end
+
 	@polyvar var[1:length(points[1])]
 	startValuesEigen = []
 	startValuesVander = []
 	for entry in listOfDegrees
-		EigenValueStart, VanderMondeStart = comparisonOfMethods(entry[1],points,entry[2], 1.5)
+		EigenValueStart, VanderMondeStart = comparisonOfMethods(entry[1], points,entry[2], 1.3)
 		append!(startValuesEigen, [[entry[2], EigenValueStart]])
 		#append!(startValuesVander, [[entry[2], VanderMondeStart]])
 	end
@@ -51,9 +56,9 @@ function leastSquaresListOfEquations_quick(points, listOfDegrees)
 	numEq = sum([entry[2] for entry in listOfDegrees])
 	n = maximum([entry[1] for entry in listOfDegrees])
 
-	@polyvar w[1:binomial(n+length(points[1]),n),1:numEq]
+	@polyvar w[1:binomial(n+length(points[1])-1,n),1:numEq]
 	global outputValues
-	veronese = affineVeronese(n,var)
+	veronese = projVeronese(n,var)
 	outputValues=[]
 	err = Inf
 
@@ -63,8 +68,7 @@ function leastSquaresListOfEquations_quick(points, listOfDegrees)
 			intermediateValues = [comb for comb in combination]
 			for i in 1:2
 				saverArray = sampsonDistance(points, numEq, n, w, intermediateValues)
-				helper = [value for value in intermediateValues]
-				intermediateValues, currentError = weightedGradientDescent(points, n, w, helper, numEq, 200, saverArray, zeroEntries)
+				intermediateValues, currentError = weightedGradientDescent(points, n, w, [value for value in intermediateValues], numEq, 250, saverArray, zeroEntries)
 				if currentError < err
 					println("Ansatz with ", i,  " iterations takes the cake! Error: ",currentError)
 					err = currentError
@@ -83,8 +87,13 @@ end
   best-approximating polynomial. Also, it uses a threshold of tau=2.o and
   400 gradient descent steps.
 =#
-function leastSquaresListOfEquations(points, listOfDegrees)
+function leastSquaresListOfEquations(data, listOfDegrees, affine=true)
 	time1 = round(Int64, time() * 1000)
+	if affine == true
+		points = [vcat(point,[1]) for point in data]
+	else
+		points = data
+	end
 	@polyvar var[1:length(points[1])]
 	startValuesEigen = []
 	startValuesVander = []
@@ -92,22 +101,22 @@ function leastSquaresListOfEquations(points, listOfDegrees)
 	n = maximum([entry[1] for entry in listOfDegrees])
 
 	for entry in listOfDegrees
-		EigenValueStart, VanderMondeStart = comparisonOfMethods(entry[1],points,entry[2], 2.0)
+		EigenValueStart, VanderMondeStart = comparisonOfMethods(entry[1], points,entry[2], 1.5)
 		append!(startValuesEigen, [[entry[2], EigenValueStart]])
 		append!(startValuesVander, [[entry[2], VanderMondeStart]])
 	end
 	startValueCombinations = [makeCombinations(startValuesEigen), makeCombinations(startValuesVander)]
 	#startValueCombinations = [makeCombinations(startValuesEigen)]
 
-	@polyvar w[1:binomial(n+length(points[1]),n),1:numEq]
+	@polyvar w[1:binomial(n+length(points[1])-1,n),1:numEq]
 	global outputValues
-	veronese = affineVeronese(n,var)
+	veronese = affineVeronese(n,var[1:length(data[1])])
 	outputValues=[]
 	err = Inf
+	println("Der Suchraum hat Dimension: ",binomial(n+length(data[1]),n))
 
 	for combinations in startValueCombinations
 		for combination in combinations
-			timex = round(Int64, time() * 1000)
 			combination, zeroEntries = fillUpWithZeros(combination, n, numEq, length(var))
 			result = [vector'*veronese for vector in combination]
 			currentError = calculateMeanDistanceToVariety(points, result, var)
@@ -122,8 +131,7 @@ function leastSquaresListOfEquations(points, listOfDegrees)
 			#TODO wie viele Iterationsschritte?
 			for i in 1:2
 				saverArray = sampsonDistance(points, numEq, n, w, intermediateValues)
-				helper = [value for value in intermediateValues]
-				intermediateValues, err = weightedGradientDescent(points, n, w, helper, numEq, 400, saverArray, zeroEntries)
+				intermediateValues, err = weightedGradientDescent(points, n, w, [value for value in intermediateValues], numEq, 400, saverArray, zeroEntries)
 				result = [vector'*veronese for vector in intermediateValues]
 				currentError = calculateMeanDistanceToVariety(points, result, var)
 				if currentError < err
