@@ -81,7 +81,7 @@ end
 function calculateMeanDistanceToVariety(points, equations, var)
 	#HomotopyContinuation: https://www.juliahomotopycontinuation.org/examples/critical-points/
 	@polyvar u[1:length(var)]
-	if(length(var)-length(equations)==1)
+	if (length(var)-length(equations) == 1)
 		d = [differentiate(equation, var) for equation in equations]
 		matrix = Array{DynamicPolynomials.Polynomial, 2}(undef, length(var), length(var))
 		matrix[1,:] = var-u
@@ -91,9 +91,26 @@ function calculateMeanDistanceToVariety(points, equations, var)
 		systemArray = [det(matrix)]
 		append!(systemArray, equations)
 		F_u = System(systemArray, variables = var, parameters = u)
+	elseif (length(var)-length(equations) > 1)
+		d = [differentiate(equation, var) for equation in equations]
+		matrix = Array{DynamicPolynomials.Polynomial, 2}(undef, length(equations)+1, length(var))
+		matrix[1,:] = var-u
+		for i in 1:length(d)
+			matrix[i+1,:] = d[i]
+		end
+		binomialsets = filter(p->length(p)==length(equations)+1, collect(powerset(1:length(var))))
+		saverMatrix=Array{DynamicPolynomials.Polynomial,2}(undef,length(equations)+1,length(equations)+1)
+		systemArray=Array{DynamicPolynomials.Polynomial,1}(undef,0)
+		for entry in binomialsets
+			for i in 1:length(entry)
+				saverMatrix[:,i] = matrix[:, entry[i]]
+			end
+			push!(systemArray,det(saverMatrix))
+		end
+		append!(systemArray, equations)
+		F_u = System(systemArray, variables = var, parameters = u)
 	else
-		throw(error("The method is not yet supported for dimension other than 1!"))
-		# TODO: Minoren Ansatz
+		throw(error("The method is not yet supported for non-complete intersections!"))
 	end
 	p = randn(ComplexF64, length(points[1]))
 	#@suppress begin

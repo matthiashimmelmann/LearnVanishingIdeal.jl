@@ -8,12 +8,12 @@ include("auxiliaryFunctions.jl")
   @return a coefficient vector and the error (Sampson Distance or Mean Distance)
   of the best-approximating polynomial
 =#
-function approximateVanishingIdeal(points, listOfDegrees, quick=false)
+function approximateVanishingIdeal(points, listOfDegrees, quick=false, affine=true)
 	degreeList = findEqListOfDegrees(listOfDegrees)
 	if(quick==true)
-		return( leastSquaresListOfEquations_quick( points, degreeList ))
+		return( leastSquaresListOfEquations_quick( points, degreeList, affine ))
 	else
-		return( leastSquaresListOfEquations( points, degreeList ))
+		return( leastSquaresListOfEquations( points, degreeList, affine))
 	end
 end
 
@@ -25,9 +25,9 @@ end
   @return a coefficient vector and the error (Sampson Distance or Mean Distance)
   of the best-approximating polynomial
 =#
-function approximateVanishingIdeal_maxDegree(n, points, numEq, quick=false)
+function approximateVanishingIdeal_maxDegree(n, points, numEq, quick=false, affine=true)
 	listOfDegrees = [n for i in 1:numEq]
-	return(approximateVanishingIdeal(points, listOfDegrees, quick))
+	return(approximateVanishingIdeal(points, listOfDegrees, quick, affine))
 end
 
 #=
@@ -36,7 +36,8 @@ end
   polynomial. Also, it uses a threshold of tau=1.5 and only 200 gradient
   descent steps.
 =#
-function leastSquaresListOfEquations_quick(data, listOfDegrees, affine=true)
+function leastSquaresListOfEquations_quick(data, listOfDegrees, affine)
+	time1 = time()
 	if affine == true
 		points = [vcat(point,[1]) for point in data]
 	else
@@ -77,6 +78,8 @@ function leastSquaresListOfEquations_quick(data, listOfDegrees, affine=true)
 			end
 		end
 	end
+	time2 = time()
+	println("The algorithm took: ",time2-time1,"s")
 	return([value/norm(value) for value in outputValues], err)
 end
 
@@ -87,7 +90,7 @@ end
   best-approximating polynomial. Also, it uses a threshold of tau=2.o and
   400 gradient descent steps.
 =#
-function leastSquaresListOfEquations(data, listOfDegrees, affine=true)
+function leastSquaresListOfEquations(data, listOfDegrees, affine)
 	time1 = round(Int64, time() * 1000)
 	if affine == true
 		points = [vcat(point,[1]) for point in data]
