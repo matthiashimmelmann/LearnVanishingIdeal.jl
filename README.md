@@ -10,7 +10,7 @@ In the following example, we are given the points ![ (0,1),~ (-1,2) \text{ and }
 
 ```
 julia> @polyvar x y
-julia> result, mderror = approximateVanishingIdeal([[-2,5],[2,5],[0,1],[1,2],[-1,2]], [2])
+julia> result, sampserror = approximateVanishingIdeal([[-2,5],[2,5],[0,1],[1,2],[-1,2]], [2])
 julia> [[round(entry,digits=2) for entry in value]'*affineVeronese(2,[x,y]) for value in result]
 1-element Array{Polynomial{true,Float64},1}:
  -0.58x² + 0.58y - 0.58
