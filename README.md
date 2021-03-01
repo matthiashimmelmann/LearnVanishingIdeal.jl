@@ -6,7 +6,7 @@ It runs under the assumption that the underlying variety is a complete intersect
 
 # Instructions
 
-In the following example, we are given the points ![ (0,1),~ (-1,2) \text{ and } (1,2)](https://latex.codecogs.com/svg.latex?(0,1),~(-2,5),~(-2,5),~(-1,2)~\text{and}~(1,2)~) that lie on a parabola. Hence, we want to approximate these data points with one degree 2 curve. 
+In the following example, we are given the points (0,1), (-1,2) and (1,2) that lie on a parabola. Hence, we want to approximate these data points with one degree 2 curve. 
 
 ```
 julia> @polyvar x y
