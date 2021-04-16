@@ -1,10 +1,23 @@
-using LinearAlgebra, DynamicPolynomials, Random, Distributions, Combinatorics
-using HomotopyContinuation, Suppressor
+module auxiliaryFunctions
+
+import LinearAlgebra: zeros, Matrix, svd, pinv, transpose, det, norm, I
+import DynamicPolynomials: Polynomial, @polyvar, Term, PolyVar
+import HomotopyContinuation: solve, randn, differentiate, solutions, real_solutions, System
+import Combinatorics: binomial, powerset, multiexponents
+
+export affineVeronese,
+	projVeronese,
+	addNoise,
+	calculateMeanDistanceToVariety,
+	findEqListOfDegrees,
+	comparisonOfMethods,
+	makeCombinations,
+	fillUpWithZeros,
+	sampsonDistance,
+	weightedGradientDescent
 
 function addNoise(points, variance)
-	Random.seed!(123)
-	dist = Distributions.Normal(0.0,variance)
-	points = [[entry+rand(dist) for entry in point] for point in points]
+	points = [[entry+randn(Float64) for entry in point] for point in points]
 	return(points)
 end
 
@@ -24,11 +37,11 @@ function jacobianProd(veronese, var)
 end
 
 function vandermonde(n, d, array, proj=false)
-	exponents = vcat(map(i -> collect(Combinatorics.multiexponents(n,-i)), -d:0)...)
+	exponents = vcat(map(i -> collect(multiexponents(n,-i)), -d:0)...)
 	if (proj == true)
 		exponents = []
 		for k in n:-1:0
-			exp = collect(Combinatorics.multiexponents(length(array[1])-1,k))
+			exp = collect(multiexponents(length(array[1])-1,k))
 			[append!(entry,n-k) for entry in exp]
 			append!(exponents,exp)
 		end
@@ -63,7 +76,7 @@ function evaluationOfMatrix(gamma, Z, var)
 end
 
 function affineVeronese(n, var)
-	exponents = vcat(map(i -> collect(Combinatorics.multiexponents(length(var),-i)), -n:0)...)
+	exponents = vcat(map(i -> collect(multiexponents(length(var),-i)), -n:0)...)
 	output = [prod(var.^exp) for exp in exponents]
 	return(output)
 end
@@ -71,7 +84,7 @@ end
 function projVeronese(n,var)
 	output = []
 	for k in n:-1:0
-		exponents = Combinatorics.multiexponents(length(var)-1,k)
+		exponents = multiexponents(length(var)-1,k)
 		append!(output,[prod(var[1:length(var)-1].^exp)*var[length(var)]^(n-k) for exp in exponents])
 	end
 	return(output)
@@ -83,7 +96,7 @@ function calculateMeanDistanceToVariety(points, equations, var)
 	@polyvar u[1:length(var)]
 	if (length(var)-length(equations) == 1)
 		d = [differentiate(equation, var) for equation in equations]
-		matrix = Array{DynamicPolynomials.Polynomial, 2}(undef, length(var), length(var))
+		matrix = Array{Polynomial, 2}(undef, length(var), length(var))
 		matrix[1,:] = var-u
 		for i in 1:length(d)
 			matrix[i+1,:] = d[i]
@@ -93,14 +106,14 @@ function calculateMeanDistanceToVariety(points, equations, var)
 		F_u = System(systemArray, variables = var, parameters = u)
 	elseif (length(var)-length(equations) > 1)
 		d = [differentiate(equation, var) for equation in equations]
-		matrix = Array{DynamicPolynomials.Polynomial, 2}(undef, length(equations)+1, length(var))
+		matrix = Array{Polynomial, 2}(undef, length(equations)+1, length(var))
 		matrix[1,:] = var-u
 		for i in 1:length(d)
 			matrix[i+1,:] = d[i]
 		end
 		binomialsets = filter(p->length(p)==length(equations)+1, collect(powerset(1:length(var))))
-		saverMatrix=Array{DynamicPolynomials.Polynomial,2}(undef,length(equations)+1,length(equations)+1)
-		systemArray=Array{DynamicPolynomials.Polynomial,1}(undef,0)
+		saverMatrix=Array{Polynomial,2}(undef,length(equations)+1,length(equations)+1)
+		systemArray=Array{Polynomial,1}(undef,0)
 		for entry in binomialsets
 			for i in 1:length(entry)
 				saverMatrix[:,i] = matrix[:, entry[i]]
@@ -114,8 +127,8 @@ function calculateMeanDistanceToVariety(points, equations, var)
 	end
 	p = randn(ComplexF64, length(points[1]))
 	#@suppress begin
-		result_p = HomotopyContinuation.solve(F_u, target_parameters = p)
-		realSolutions = HomotopyContinuation.solve(
+		result_p = solve(F_u, target_parameters = p)
+		realSolutions = solve(
 							F_u,
 							solutions(result_p);
 							start_parameters =  p,
@@ -203,7 +216,7 @@ function sampsonDistance(points, nEq, n, var, startValues)
 	veronese = projVeronese(n, zed)
 	Qstart = [start'*veronese for start in startValues]
 	J = [differentiate(q,zed) for q in Qstart]
-	matrix = Array{DynamicPolynomials.Polynomial,2}(undef, nEq, length(points[1]))
+	matrix = Array{Polynomial,2}(undef, nEq, length(points[1]))
 	for i in 1:nEq
 		matrix[i,:] = J[i]
 	end
@@ -347,4 +360,6 @@ function findDivisors(number, currentList)
 		end
 	end
 	return(saverList)
+end
+
 end
