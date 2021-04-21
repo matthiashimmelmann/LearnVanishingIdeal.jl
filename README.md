@@ -4,11 +4,18 @@ This `Julia` package aims at learning an algebraic variety from a list of potent
 
 It runs under the assumption that the underlying variety is a complete intersection. At the moment, either a maximum occuring degree among the generators of the vanishing ideal or a list of degrees is required as input. In addition, we assume that the codimension of the variety is known. 
 
+# Installation
+
+```
+pkg> add LearnVanishingIdeal
+```
+
 # Instructions
 
 In the following example, we are given the points (0,1), (-1,2) and (1,2) that lie on a parabola. Hence, we want to approximate these data points with one degree 2 curve. 
 
 ```
+julia> using HomotopyContinuation
 julia> @polyvar x y
 julia> result, sampserror = approximateVanishingIdeal([[-2,5],[2,5],[0,1],[1,2],[-1,2]], [2])
 julia> [[round(entry,digits=2) for entry in value]'*affineVeronese(2,[x,y]) for value in result]
