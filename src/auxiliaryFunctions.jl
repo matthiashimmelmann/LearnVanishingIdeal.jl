@@ -1,8 +1,7 @@
 module auxiliaryFunctions
 
 import LinearAlgebra: zeros, Matrix, svd, pinv, transpose, det, norm, I
-import DynamicPolynomials: Polynomial, @polyvar, Term, PolyVar
-import HomotopyContinuation: solve, randn, differentiate, solutions, real_solutions, System
+import HomotopyContinuation: solve, randn, differentiate, solutions, real_solutions, System, Polynomial, @polyvar, Term
 import Combinatorics: binomial, powerset, multiexponents
 
 export affineVeronese,
@@ -33,6 +32,7 @@ function jacobianProd(veronese, var)
 	end
 	tranMat=dMatrix
 	Mat = collect(transpose(dMatrix))
+	display(tranMat*Mat)
 	return(tranMat*Mat)
 end
 

@@ -1,6 +1,6 @@
 module LearnVanishingIdeal
 
-import DynamicPolynomials: @polyvar, PolyVar
+import HomotopyContinuation: @polyvar
 import LinearAlgebra: norm
 
 export approximateVanishingIdeal,
@@ -14,7 +14,6 @@ export approximateVanishingIdeal,
 
 include("auxiliaryFunctions.jl")
 using .auxiliaryFunctions
-#TODO implement backtracking line search
 
 """
   @input The function approximateVanishingIdeal takes a list of points,
