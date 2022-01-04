@@ -88,7 +88,8 @@ function projVeronese(n,var)
 		exponents = multiexponents(length(var)-1,k)
 		append!(output,[prod(var[1:length(var)-1].^exp)*var[length(var)]^(n-k) for exp in exponents])
 	end
-	return(output)
+	display(output)
+	return(Vector{Polynomial}(output))
 end
 
 
