@@ -105,7 +105,7 @@ end
   best-approximating polynomial. Also, it uses a threshold of tau=2.o and
   400 gradient descent steps.
 """
-function leastSquaresListOfEquations(data, listOfDegrees, affine)
+function leastSquaresListOfEquations(data, listOfDegrees, affine; TOL = 1e-8)
 	time1 = round(Int64, time() * 1000)
 	if affine == true
 		points = [vcat(point,[1]) for point in data]
@@ -141,9 +141,11 @@ function leastSquaresListOfEquations(data, listOfDegrees, affine)
 			if currentError < err
 				println("Ansatz without iterations takes the cake! Error: ", currentError)
 				err = currentError
-				outputValues = [vector for vector in combination]
+				outputValues = [comb for comb in combination]
 			end
-
+			if currentError<TOL
+				return([value/norm(value) for value in outputValues], currentError)
+			end
 
 			intermediateValues = [comb for comb in combination]
 			#TODO wie viele Iterationsschritte?

@@ -1,7 +1,8 @@
 module auxiliaryFunctions
 
 import LinearAlgebra: zeros, Matrix, svd, pinv, transpose, det, norm, I
-import HomotopyContinuation: solve, randn, differentiate, solutions, real_solutions, System, Polynomial, @polyvar, Term
+import HomotopyContinuation: solve, randn, differentiate, solutions, real_solutions, System, @polyvar
+import DynamicPolynomials: Polynomial, Term
 import Combinatorics: binomial, powerset, multiexponents
 
 export affineVeronese,
@@ -22,19 +23,14 @@ end
 
 function jacobianProd(veronese, var)
 	d = length(var)
-
-	dMatrix = Array{Term, 2}(undef, length(veronese), d)
+	dMatrix = Array{Polynomial, 2}(undef, length(veronese), length(veronese))
 	dArray = [collect(differentiate(poly, var) for poly in veronese)][1]
-	for i in 1:length(dArray)
-		for j in 1:length(dArray[i])
-			dMatrix[i,j] = dArray[i][j]
+	for i in 1:size(dMatrix)[1]
+		for j in 1:size(dMatrix)[2]
+			dMatrix[i,j] = Polynomial(differentiate(veronese[i], var)'*differentiate(veronese[j], var))
 		end
 	end
-	tranMat=dMatrix
-	Mat = collect(transpose(dMatrix))
-	display(tranMat)
-	display(Mat)
-	return(tranMat*Mat)
+	return(dMatrix)
 end
 
 function vandermonde(n, d, array, proj=false)
@@ -83,13 +79,9 @@ function affineVeronese(n, var)
 end
 
 function projVeronese(n,var)
-	output = []
-	for k in n:-1:0
-		exponents = multiexponents(length(var)-1,k)
-		append!(output,[prod(var[1:length(var)-1].^exp)*var[length(var)]^(n-k) for exp in exponents])
-	end
-	display(output)
-	return(Vector{Polynomial}(output))
+	exponents = vcat(map(i -> collect(multiexponents(length(var)-1,-i)), -n:0)...)
+	output = [prod(var[1:length(var)-1].^exp)*var[length(var)]^(n-sum(exp)) for exp in exponents]
+	return(output)
 end
 
 
@@ -157,7 +149,6 @@ function comparisonOfMethods(n,points,numEq,tau)
 	svdSingular = svd(pinv(jacoProdProj)*veroProdProj)
 	firstS = [entry / maximum(svdSingular.S) for entry in svdSingular.S]
 	smallestS = firstS[length(firstS)-numEq+1]*tau
-	display(filter(p-> p<=smallestS, firstS))
 	numberOfSmallSingularValues = length(filter(p-> p<=smallestS, firstS))
 	firstV = [svdSingular.V[:,i] for i in (length(veroneseProj)-numberOfSmallSingularValues+1):length(veroneseProj)]
 	timer2 = round(Int64, time() * 1000)
@@ -188,7 +179,7 @@ function weightedGradientDescent(points, n, var, curw0, nEq, maxIter, saverArray
 	curLoss = lossFct(w0Matrix)
 	i, prevLoss, lambda, prevw0Matrix = 1, curLoss+1, 0.1, w0Matrix+Matrix{Float64}(I, size(w0Matrix)[1], size(w0Matrix)[2])
 	while  (i < maxIter )#&& lambda > 10^(-10) && curLoss > 10^(-16) && sqrt(sum([sum((w0Matrix[i,:]-prevw0Matrix[i,:]).^2)/size(w0Matrix)[2] for i in 1:size(w0Matrix)[1]])/size(w0Matrix)[1]) > 10^(-14))
-		#=if ( curLoss > prevLoss )
+		if ( curLoss > prevLoss )
 			lambda = lambda/2
 			w0Matrix, curLoss = prevw0Matrix, prevLoss
 			i = i-1
@@ -200,38 +191,35 @@ function weightedGradientDescent(points, n, var, curw0, nEq, maxIter, saverArray
 			lambda = lambda/0.99
 		end
 
-		prevLoss, prevw0Matrix = curLoss, w0Matrix=#
+		prevLoss, prevw0Matrix = curLoss, w0Matrix
 		for zero in zeroEntries
 			zeroMatrix[zero[2],zero[1]] = w0Matrix[zero[2],zero[1]]
 		end
 		dLossHelper = 2*sum([(projVeronese(n,points[j])*projVeronese(n,points[j])')*w0Matrix*saverArray[j] for j in 1:length(points)])./length(points)+2*zeroMatrix
-		w0Matrix, lambda, curLoss = backtracking_line_search(w0Matrix, lambda, dLossHelper, lossFct)
-		lambda = max(5*lambda, 0.1)
-		#w0Matrix = w0Matrix - lambda * dLossHelper
+		#w0Matrix, lambda, curLoss = backtracking_line_search(w0Matrix, lambda, dLossHelper, lossFct)
+		w0Matrix = w0Matrix - lambda * dLossHelper
+		curLoss = lossFct(w0Matrix)
 		i=i+1
 	end
-
 	return([w0Matrix[:,i]./norm(w0Matrix[:,i]) for i in 1:size(w0Matrix)[2]], curLoss)
 end
 
 function backtracking_line_search(w0Matrix, lambda, dLoss, lossFct; τ=1e-3)
-	while lossFct(w0Matrix)-lossFct(w0Matrix - lambda * dLoss) < τ*lambda*norm(dLoss)^2
+	while lossFct(w0Matrix)-lossFct(w0Matrix - lambda * dLoss) < τ*lambda*norm(dLoss)^2 && lambda > 1e-6
 		lambda = lambda/2
 	end
-	return(w0Matrix - lambda * dLoss, lambda, lossFunction(w0Matrix - lambda * dLoss))
+	return(w0Matrix - lambda * dLoss, lambda, lossFct(w0Matrix - lambda * dLoss))
 end
 
 function sampsonDistance(points, nEq, n, var, startValues)
 	@polyvar zed[1:length(points[1])]
 	veronese = projVeronese(n, zed)
 	Qstart = [start'*veronese for start in startValues]
-	J = [differentiate(q,zed) for q in Qstart]
 	matrix = Array{Polynomial,2}(undef, nEq, length(points[1]))
 	for i in 1:nEq
-		matrix[i,:] = J[i]
+		matrix[i,:] = differentiate(Qstart[i],zed)
 	end
-
-	prod = matrix*matrix'
+	prod = matrix.*matrix'
 	helper = Array{Float64,2}(undef, nEq, nEq)
 	saverArray = []
 
