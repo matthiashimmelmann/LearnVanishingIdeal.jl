@@ -173,7 +173,6 @@ function comparisonOfMethods(n,points,numEq,tau)
 end
 
 function weightedGradientDescent(points, n, var, curw0, nEq, maxIter, saverArray, zeroEntries)
-	#TODO implement batch GD
 	zeroMatrix = zeros(Float64,length(curw0[1]),length(curw0))
 
 	w0Matrix = Array{Float64,2}(undef,length(curw0[1]),length(curw0))
@@ -183,10 +182,11 @@ function weightedGradientDescent(points, n, var, curw0, nEq, maxIter, saverArray
 	for zero in zeroEntries
 		zeroMatrix[zero[2],zero[1]] = w0Matrix[zero[2],zero[1]]
 	end
-	curLoss = sum([(projVeronese(n,points[j])'*w0Matrix)*saverArray[j]*w0Matrix'*projVeronese(n,points[j]) for j in 1:length(points)])/length(points)+0.1*sum([entry.^2 for entry in zeroMatrix])
+	lossFct = w0Matrix -> sum([(projVeronese(n,points[j])'*w0Matrix)*saverArray[j]*w0Matrix'*projVeronese(n,points[j]) for j in 1:length(points)])/length(points)+0.1*sum([entry.^2 for entry in zeroMatrix])
+	curLoss = lossFct(w0Matrix)
 	i, prevLoss, lambda, prevw0Matrix = 1, curLoss+1, 0.1, w0Matrix+Matrix{Float64}(I, size(w0Matrix)[1], size(w0Matrix)[2])
 	while  (i < maxIter )#&& lambda > 10^(-10) && curLoss > 10^(-16) && sqrt(sum([sum((w0Matrix[i,:]-prevw0Matrix[i,:]).^2)/size(w0Matrix)[2] for i in 1:size(w0Matrix)[1]])/size(w0Matrix)[1]) > 10^(-14))
-		if ( curLoss > prevLoss )
+		#=if ( curLoss > prevLoss )
 			lambda = lambda/2
 			w0Matrix, curLoss = prevw0Matrix, prevLoss
 			i = i-1
@@ -198,17 +198,25 @@ function weightedGradientDescent(points, n, var, curw0, nEq, maxIter, saverArray
 			lambda = lambda/0.99
 		end
 
-		prevLoss, prevw0Matrix = curLoss, w0Matrix
+		prevLoss, prevw0Matrix = curLoss, w0Matrix=#
 		for zero in zeroEntries
 			zeroMatrix[zero[2],zero[1]] = w0Matrix[zero[2],zero[1]]
 		end
 		dLossHelper = 2*sum([(projVeronese(n,points[j])*projVeronese(n,points[j])')*w0Matrix*saverArray[j] for j in 1:length(points)])./length(points)+2*zeroMatrix
-		w0Matrix = w0Matrix - lambda * dLossHelper
-		curLoss = sum([(projVeronese(n,points[j])'*w0Matrix)*saverArray[j]*w0Matrix'*projVeronese(n,points[j]) for j in 1:length(points)])/length(points)+0.1*sum([entry.^2 for entry in zeroMatrix])
+		w0Matrix, lambda, curLoss = backtracking_line_search(w0Matrix, lambda, dLossHelper, lossFct)
+		lambda = max(5*lambda, 0.1)
+		#w0Matrix = w0Matrix - lambda * dLossHelper
 		i=i+1
 	end
 
 	return([w0Matrix[:,i]./norm(w0Matrix[:,i]) for i in 1:size(w0Matrix)[2]], curLoss)
+end
+
+function backtracking_line_search(w0Matrix, lambda, dLoss, lossFct; τ=1e-3)
+	while lossFct(w0Matrix)-lossFct(w0Matrix - lambda * dLoss) < τ*lambda*norm(dLoss)^2
+		lambda = lambda/2
+	end
+	return(w0Matrix - lambda * dLoss, lambda, lossFunction(w0Matrix - lambda * dLoss))
 end
 
 function sampsonDistance(points, nEq, n, var, startValues)
