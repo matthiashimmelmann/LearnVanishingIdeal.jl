@@ -32,7 +32,8 @@ function jacobianProd(veronese, var)
 	end
 	tranMat=dMatrix
 	Mat = collect(transpose(dMatrix))
-	display(tranMat*Mat)
+	display(tranMat)
+	display(Mat)
 	return(tranMat*Mat)
 end
 
