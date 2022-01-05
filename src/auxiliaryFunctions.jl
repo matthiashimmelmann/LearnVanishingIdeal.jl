@@ -34,7 +34,6 @@ function jacobianProd(veronese, var)
 	return(dMatrix)
 end
 
-#=
 function vandermonde(n, d, array, proj=false)
 	exponents = vcat(map(i -> collect(multiexponents(n,-i)), -d:0)...)
 	if (proj == true)
@@ -58,7 +57,7 @@ function vandermonde(n, d, array, proj=false)
 		end
 	end
 	return(output)
-end=#
+end
 
 function evaluationOfMatrix(gamma, Z, var)
 	output = zeros(size(gamma)[1], size(gamma)[2])
@@ -158,7 +157,17 @@ function comparisonOfMethods(n,points,numEq,tau)
 	numberOfSmallSingularValues = length(filter(p-> p<=smallestS, firstS))
 	firstV = [svdSingular.V[:,i] for i in (length(veroneseProj)-numberOfSmallSingularValues+1):length(veroneseProj)]
 	timer2 = round(Int64, time() * 1000)
-	return(firstV)
+	try
+		Vandermonde = vandermonde(length(var),n,points,true)
+		svdVander = svd(Vandermonde)
+		secondS = [entry / maximum(svdVander.S) for entry in svdVander.S]
+		secondV = svdVander.V[:,(length(veroneseProj)-numberOfSmallSingularValues+1):length(veroneseProj)]
+		secondV = [secondV[:,i] for i in 1:size(secondV)[2]]
+		return(firstV, secondV)
+	catch e
+		return(firstV, firstV)
+		prinln("Error caught",e)
+	end
 end
 
 function weightedGradientDescent(points, n, var, curw0, nEq, maxIter, saverArray, zeroEntries)
