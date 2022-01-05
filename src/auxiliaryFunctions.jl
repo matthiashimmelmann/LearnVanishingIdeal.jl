@@ -171,17 +171,23 @@ function comparisonOfMethods(n,points,numEq,tau)
 end
 
 function weightedGradientDescent(points, n, var, curw0, nEq, maxIter, saverArray, zeroEntries)
-	zeroMatrix = zeros(Float64,length(curw0[1]),length(curw0))
 
 	w0Matrix = Array{Float64,2}(undef,length(curw0[1]),length(curw0))
 	for i in 1:length(curw0)
 		w0Matrix[:,i] = curw0[i]
 	end
-	for zero in zeroEntries
-		zeroMatrix[zero[2],zero[1]] = w0Matrix[zero[2],zero[1]]
+	function zeroMatrix(w0Matrix)
+		mat = zeros(Float64,length(curw0[1]),length(curw0))
+		for zero in zeroEntries
+			mat[zero[2],zero[1]] = w0Matrix[zero[2],zero[1]]
+		end
+		return(mat)
 	end
-	lossFct = w0Matrix -> sum([(projVeronese(n,points[j])'*w0Matrix)*saverArray[j]*w0Matrix'*projVeronese(n,points[j]) for j in 1:length(points)])/length(points)+0.1*sum([entry.^2 for entry in zeroMatrix])
+
+	lossFct = w0Matrix -> sum([(projVeronese(n,points[j])'*w0Matrix)*saverArray[j]*w0Matrix'*projVeronese(n,points[j]) for j in 1:length(points)])/length(points)+sum([entry.^2 for entry in zeroMatrix(w0Matrix)])
 	curLoss = lossFct(w0Matrix)
+	dLossHelper = w0Matrix -> 2*sum([(projVeronese(n,points[j])*projVeronese(n,points[j])')*w0Matrix*saverArray[j] for j in 1:length(points)])./length(points)+2*zeroMatrix(w0Matrix)
+	dLossFct = w0Matrix -> dLossHelper(w0Matrix)/norm(dLossHelper(w0Matrix))
 	i, prevLoss, lambda, prevw0Matrix = 1, curLoss+1, 0.1, w0Matrix+Matrix{Float64}(I, size(w0Matrix)[1], size(w0Matrix)[2])
 	while  (i < maxIter )#&& lambda > 10^(-10) && curLoss > 10^(-16) && sqrt(sum([sum((w0Matrix[i,:]-prevw0Matrix[i,:]).^2)/size(w0Matrix)[2] for i in 1:size(w0Matrix)[1]])/size(w0Matrix)[1]) > 10^(-14))
 		#=if ( curLoss > prevLoss )
@@ -197,12 +203,11 @@ function weightedGradientDescent(points, n, var, curw0, nEq, maxIter, saverArray
 		end
 
 		prevLoss, prevw0Matrix = curLoss, w0Matrix=#
-		for zero in zeroEntries
+		#=for zero in zeroEntries
 			zeroMatrix[zero[2],zero[1]] = w0Matrix[zero[2],zero[1]]
-		end
-		dLossHelper = 2*sum([(projVeronese(n,points[j])*projVeronese(n,points[j])')*w0Matrix*saverArray[j] for j in 1:length(points)])./length(points)+2*zeroMatrix
-		dLossHelper = dLossHelper/norm(dLossHelper)
-		w0Matrix, lambda, curLoss = backtracking_line_search(w0Matrix, lambda, dLossHelper, lossFct)
+		end=#
+		dLoss = dLossFct(w0Matrix)
+		w0Matrix, lambda, curLoss = backtracking_line_search(w0Matrix, lambda, dLoss, lossFct)
 		#w0Matrix = w0Matrix - lambda * dLossHelper
 		#curLoss = lossFct(w0Matrix)
 		lambda = lambda*5
