@@ -114,17 +114,14 @@ function leastSquaresListOfEquations(data, listOfDegrees, affine; TOL = 1e-8)
 	end
 	@polyvar var[1:length(points[1])]
 	startValuesEigen = []
-	startValuesVander = []
 	numEq = sum([entry[2] for entry in listOfDegrees])
 	n = maximum([entry[1] for entry in listOfDegrees])
 
 	for entry in listOfDegrees
-		EigenValueStart, VanderMondeStart = comparisonOfMethods(entry[1], points,entry[2], 1.5)
+		EigenValueStart, _ = comparisonOfMethods(entry[1], points,entry[2], 1.5)
 		append!(startValuesEigen, [[entry[2], EigenValueStart]])
-		append!(startValuesVander, [[entry[2], VanderMondeStart]])
 	end
-	startValueCombinations = [makeCombinations(startValuesEigen), makeCombinations(startValuesVander)]
-	#startValueCombinations = [makeCombinations(startValuesEigen)]
+	startValueCombinations = [makeCombinations(startValuesEigen)]
 
 	@polyvar w[1:binomial(n+length(points[1])-1,n),1:numEq]
 	global outputValues
@@ -144,13 +141,13 @@ function leastSquaresListOfEquations(data, listOfDegrees, affine; TOL = 1e-8)
 				outputValues = [comb for comb in combination]
 			end
 			if currentError<TOL
-				#return([value/norm(value) for value in outputValues], currentError)
+				return([value/norm(value) for value in outputValues], currentError)
 			end
 			intermediateValues = [comb for comb in combination]
 
-			for i in 1:2
+			for i in 1:3
 				saverArray = sampsonDistance(points, numEq, n, w, intermediateValues)
-				intermediateValues, placeholderError = weightedGradientDescent(points, n, w, [value for value in intermediateValues], numEq, 400, saverArray, zeroEntries)
+				intermediateValues, placeholderError = weightedGradientDescent(points, n, w, [value for value in intermediateValues], numEq, 1000, saverArray, zeroEntries)
 				result = [vector'*veronese for vector in intermediateValues]
 				currentError = calculateMeanDistanceToVariety(points, result, var)
 				if currentError==nothing

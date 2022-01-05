@@ -184,43 +184,32 @@ function weightedGradientDescent(points, n, var, curw0, nEq, maxIter, saverArray
 		return(mat)
 	end
 
-	lossFct = w0Matrix -> sum([(projVeronese(n,points[j])'*w0Matrix)*saverArray[j]*w0Matrix'*projVeronese(n,points[j]) for j in 1:length(points)])/length(points)+sum([entry.^2 for entry in zeroMatrix(w0Matrix)])
+	lossFct = w0Matrix -> sum([(projVeronese(n,points[j])'*w0Matrix)*saverArray[j]*w0Matrix'*projVeronese(n,points[j]) for j in 1:length(points)])/length(points)+0.1sum([entry.^2 for entry in zeroMatrix(w0Matrix)])
 	curLoss = lossFct(w0Matrix)
-	dLossHelper = w0Matrix -> 2*sum([(projVeronese(n,points[j])*projVeronese(n,points[j])')*w0Matrix*saverArray[j] for j in 1:length(points)])./length(points)+2*zeroMatrix(w0Matrix)
-	dLossFct = w0Matrix -> dLossHelper(w0Matrix)/norm(dLossHelper(w0Matrix))
-	i, prevLoss, lambda, prevw0Matrix = 1, curLoss+1, 0.1, w0Matrix+Matrix{Float64}(I, size(w0Matrix)[1], size(w0Matrix)[2])
-	while  (i < maxIter )#&& lambda > 10^(-10) && curLoss > 10^(-16) && sqrt(sum([sum((w0Matrix[i,:]-prevw0Matrix[i,:]).^2)/size(w0Matrix)[2] for i in 1:size(w0Matrix)[1]])/size(w0Matrix)[1]) > 10^(-14))
-		#=if ( curLoss > prevLoss )
-			lambda = lambda/2
-			w0Matrix, curLoss = prevw0Matrix, prevLoss
-			i = i-1
-		elseif (prevLoss > curLoss/0.9)
-			lambda = lambda/0.9
-		elseif (prevLoss > curLoss/0.95)
-			lambda = lambda/0.95
-		elseif (prevLoss > curLoss/0.99)
-			lambda = lambda/0.99
-		end
-
-		prevLoss, prevw0Matrix = curLoss, w0Matrix=#
-		#=for zero in zeroEntries
-			zeroMatrix[zero[2],zero[1]] = w0Matrix[zero[2],zero[1]]
-		end=#
-		dLoss = dLossFct(w0Matrix)
-		w0Matrix, lambda, curLoss = backtracking_line_search(w0Matrix, lambda, dLoss, lossFct)
-		#w0Matrix = w0Matrix - lambda * dLossHelper
-		#curLoss = lossFct(w0Matrix)
-		lambda = lambda*5
+	dLossFct = w0Matrix -> 2*sum([(projVeronese(n,points[j])*projVeronese(n,points[j])')*w0Matrix*saverArray[j] for j in 1:length(points)])./length(points)+0.2*zeroMatrix(w0Matrix)
+	i = 1
+	while  i < maxIter && norm(dLossFct(w0Matrix)) > 1e-2
+		w0Matrix, curLoss = backtracking_line_search(w0Matrix, dLossFct, lossFct)
 		i=i+1
 	end
 	return([w0Matrix[:,i]./norm(w0Matrix[:,i]) for i in 1:size(w0Matrix)[2]], curLoss)
 end
 
-function backtracking_line_search(w0Matrix, lambda, dLoss, lossFct; τ=1e-3)
-	while lossFct(w0Matrix)-lossFct(w0Matrix - lambda * dLoss) < τ*lambda*norm(dLoss)^2
-		lambda = lambda/2
+function backtracking_line_search(w0Matrix, dLossFct, lossFct; r=1e-3, s=0.7)
+	dLoss = dLossFct(w0Matrix)./norm(dLossFct(w0Matrix))
+	α = 0; t = 0.1; β = 1e20
+	while norm(β-α)>1e-15
+		if lossFct(w0Matrix)-lossFct(w0Matrix - t * dLoss) < r*t*norm(dLoss)^2
+			β = t
+			t = (α+β)/2
+		elseif s*norm(dLoss'*dLoss)<norm(dLoss'*dLossFct(w0Matrix - t*dLoss)./norm(dLossFct(w0Matrix - t*dLoss)))
+			α = t
+			t = (α+β)/2
+		else
+			break
+		end
 	end
-	return(w0Matrix - lambda * dLoss, lambda, lossFct(w0Matrix - lambda * dLoss))
+	return(w0Matrix - t * dLoss, lossFct(w0Matrix - t * dLoss))
 end
 
 function sampsonDistance(points, nEq, n, var, startValues)
