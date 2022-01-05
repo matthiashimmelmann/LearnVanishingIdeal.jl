@@ -61,13 +61,10 @@ function leastSquaresListOfEquations_quick(data, listOfDegrees, affine)
 
 	@polyvar var[1:length(points[1])]
 	startValuesEigen = []
-	startValuesVander = []
 	for entry in listOfDegrees
-		EigenValueStart, VanderMondeStart = comparisonOfMethods(entry[1], points,entry[2], 1.3)
+		EigenValueStart = comparisonOfMethods(entry[1], points,entry[2], 1.3)
 		append!(startValuesEigen, [[entry[2], EigenValueStart]])
-		#append!(startValuesVander, [[entry[2], VanderMondeStart]])
 	end
-	#startValueCombinations = [makeCombinations(startValuesEigen), makeCombinations(startValuesVander)]
 	startValueCombinations = [makeCombinations(startValuesEigen)]
 	numEq = sum([entry[2] for entry in listOfDegrees])
 	n = maximum([entry[1] for entry in listOfDegrees])
@@ -118,7 +115,7 @@ function leastSquaresListOfEquations(data, listOfDegrees, affine; TOL = 1e-8)
 	n = maximum([entry[1] for entry in listOfDegrees])
 
 	for entry in listOfDegrees
-		EigenValueStart, _ = comparisonOfMethods(entry[1], points,entry[2], 1.5)
+		EigenValueStart = comparisonOfMethods(entry[1], points,entry[2], 1.5)
 		append!(startValuesEigen, [[entry[2], EigenValueStart]])
 	end
 	startValueCombinations = [makeCombinations(startValuesEigen)]
