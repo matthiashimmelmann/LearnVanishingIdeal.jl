@@ -4,6 +4,7 @@ import LinearAlgebra: zeros, Matrix, svd, pinv, transpose, det, norm, I
 import HomotopyContinuation: solve, randn, differentiate, solutions, real_solutions, System, @polyvar
 import DynamicPolynomials: Polynomial, Term
 import Combinatorics: binomial, powerset, multiexponents
+import Suppressor: @suppress
 
 export affineVeronese,
 	projVeronese,
@@ -120,7 +121,7 @@ function calculateMeanDistanceToVariety(points, equations, var)
 		throw(error("The method is not yet supported for non-complete intersections!"))
 	end
 	p = randn(ComplexF64, length(points[1]))
-	#@suppress begin
+	@suppress begin
 		result_p = solve(F_u, target_parameters = p)
 		realSolutions = solve(
 							F_u,
@@ -130,8 +131,12 @@ function calculateMeanDistanceToVariety(points, equations, var)
 							transform_result = (r,u) -> minimum([norm(rel-u) for rel in solutions(r)])
 		)
 		realSolutions = filter(p -> p!=Inf, realSolutions)
-		return(sum(realSolutions)/length(realSolutions))
-	#end
+		if !isempty(realSolutions)
+			return(sum(realSolutions)/length(realSolutions))
+		else
+			return(nothing)
+		end
+	end
 end
 
 #=
@@ -179,7 +184,7 @@ function weightedGradientDescent(points, n, var, curw0, nEq, maxIter, saverArray
 	curLoss = lossFct(w0Matrix)
 	i, prevLoss, lambda, prevw0Matrix = 1, curLoss+1, 0.1, w0Matrix+Matrix{Float64}(I, size(w0Matrix)[1], size(w0Matrix)[2])
 	while  (i < maxIter )#&& lambda > 10^(-10) && curLoss > 10^(-16) && sqrt(sum([sum((w0Matrix[i,:]-prevw0Matrix[i,:]).^2)/size(w0Matrix)[2] for i in 1:size(w0Matrix)[1]])/size(w0Matrix)[1]) > 10^(-14))
-		if ( curLoss > prevLoss )
+		#=if ( curLoss > prevLoss )
 			lambda = lambda/2
 			w0Matrix, curLoss = prevw0Matrix, prevLoss
 			i = i-1
@@ -191,21 +196,23 @@ function weightedGradientDescent(points, n, var, curw0, nEq, maxIter, saverArray
 			lambda = lambda/0.99
 		end
 
-		prevLoss, prevw0Matrix = curLoss, w0Matrix
+		prevLoss, prevw0Matrix = curLoss, w0Matrix=#
 		for zero in zeroEntries
 			zeroMatrix[zero[2],zero[1]] = w0Matrix[zero[2],zero[1]]
 		end
 		dLossHelper = 2*sum([(projVeronese(n,points[j])*projVeronese(n,points[j])')*w0Matrix*saverArray[j] for j in 1:length(points)])./length(points)+2*zeroMatrix
-		#w0Matrix, lambda, curLoss = backtracking_line_search(w0Matrix, lambda, dLossHelper, lossFct)
-		w0Matrix = w0Matrix - lambda * dLossHelper
-		curLoss = lossFct(w0Matrix)
+		dLossHelper = dLossHelper/norm(dLossHelper)
+		w0Matrix, lambda, curLoss = backtracking_line_search(w0Matrix, lambda, dLossHelper, lossFct)
+		#w0Matrix = w0Matrix - lambda * dLossHelper
+		#curLoss = lossFct(w0Matrix)
+		lambda = lambda*5
 		i=i+1
 	end
 	return([w0Matrix[:,i]./norm(w0Matrix[:,i]) for i in 1:size(w0Matrix)[2]], curLoss)
 end
 
 function backtracking_line_search(w0Matrix, lambda, dLoss, lossFct; τ=1e-3)
-	while lossFct(w0Matrix)-lossFct(w0Matrix - lambda * dLoss) < τ*lambda*norm(dLoss)^2 && lambda > 1e-6
+	while lossFct(w0Matrix)-lossFct(w0Matrix - lambda * dLoss) < τ*lambda*norm(dLoss)^2
 		lambda = lambda/2
 	end
 	return(w0Matrix - lambda * dLoss, lambda, lossFct(w0Matrix - lambda * dLoss))

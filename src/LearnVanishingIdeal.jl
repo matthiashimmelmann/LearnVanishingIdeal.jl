@@ -138,22 +138,24 @@ function leastSquaresListOfEquations(data, listOfDegrees, affine; TOL = 1e-8)
 			combination, zeroEntries = fillUpWithZeros(combination, n, numEq, length(var))
 			result = [vector'*veronese for vector in combination]
 			currentError = calculateMeanDistanceToVariety(points, result, var)
-			if currentError < err
+			if currentError!=nothing && currentError < err
 				println("Ansatz without iterations takes the cake! Error: ", currentError)
 				err = currentError
 				outputValues = [comb for comb in combination]
 			end
 			if currentError<TOL
-				return([value/norm(value) for value in outputValues], currentError)
+				#return([value/norm(value) for value in outputValues], currentError)
 			end
-
 			intermediateValues = [comb for comb in combination]
-			#TODO wie viele Iterationsschritte?
+
 			for i in 1:2
 				saverArray = sampsonDistance(points, numEq, n, w, intermediateValues)
-				intermediateValues, err = weightedGradientDescent(points, n, w, [value for value in intermediateValues], numEq, 400, saverArray, zeroEntries)
+				intermediateValues, placeholderError = weightedGradientDescent(points, n, w, [value for value in intermediateValues], numEq, 400, saverArray, zeroEntries)
 				result = [vector'*veronese for vector in intermediateValues]
 				currentError = calculateMeanDistanceToVariety(points, result, var)
+				if currentError==nothing
+					currentError = placeholderError
+				end
 				if currentError < err
 					println("Ansatz with ", i,  " iterations takes the cake! Error: ",currentError)
 					err = currentError
