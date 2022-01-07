@@ -23,13 +23,9 @@ using .auxiliaryFunctions
   @return a coefficient vector and the error (Sampson Distance or Mean Distance)
   of the best-approximating polynomial
 """
-function approximateVanishingIdeal(points, listOfDegrees, quick=false, affine=true)
+function approximateVanishingIdeal(points, listOfDegrees; quick=false, affine=true)
 	degreeList = findEqListOfDegrees(listOfDegrees)
-	if(quick==true)
-		return( leastSquaresListOfEquations_quick( points, degreeList, affine ))
-	else
-		return( leastSquaresListOfEquations( points, degreeList, affine))
-	end
+	return( leastSquaresListOfEquations( points, degreeList, affine; quick=quick))
 end
 
 """
@@ -46,82 +42,31 @@ function approximateVanishingIdeal_maxDegree(n, points, numEq, quick=false, affi
 end
 
 """
-  This method is a quicker variant of the method leastSquaresListOfEquations.
-  It uses the Sampson Disstance for determining the best-approximating
-  polynomial. Also, it uses a threshold of tau=1.5 and only 200 gradient
-  descent steps.
-"""
-function leastSquaresListOfEquations_quick(data, listOfDegrees, affine)
-	time1 = time()
-	if affine == true
-		points = [vcat(point,[1]) for point in data]
-	else
-		points = data
-	end
-
-	@polyvar var[1:length(points[1])]
-	startValuesEigen = []
-	startValuesVander = []
-	for entry in listOfDegrees
-		EigenValueStart, VanderMondeStart = comparisonOfMethods(entry[1], points,entry[2], 1.5)
-		append!(startValuesEigen, [[entry[2], EigenValueStart]])
-		#append!(startValuesVander, [[entry[2], VanderMondeStart]])
-	end
-	#startValueCombinations = [makeCombinations(startValuesEigen), makeCombinations(startValuesVander)]
-	startValueCombinations = [makeCombinations(startValuesEigen)]
-	numEq = sum([entry[2] for entry in listOfDegrees])
-	n = maximum([entry[1] for entry in listOfDegrees])
-
-	@polyvar w[1:binomial(n+length(points[1])-1,n),1:numEq]
-	global outputValues
-	veronese = projVeronese(n,var)
-	outputValues=[]
-	err = Inf
-
-	for combinations in startValueCombinations
-		for combination in combinations
-			combination, zeroEntries = fillUpWithZeros(combination, n, numEq, length(var))
-			intermediateValues = [[round(co, digits=6) for co in comn] for comb in combination]
-			if(rank(hcat(intermediateValues))<length(intermediateValues))
-				continue
-			end
-			for i in 1:2
-				saverArray = sampsonDistance(points, numEq, n, w, intermediateValues)
-				intermediateValues, currentError = weightedGradientDescent(points, n, w, [value for value in intermediateValues], numEq, 250, saverArray, zeroEntries)
-				if currentError < err
-					println("Ansatz with ", i,  " iterations takes the cake! Error: ",currentError)
-					err = currentError
-					outputValues = [vector for vector in intermediateValues]
-				end
-			end
-		end
-	end
-	time2 = time()
-	println("The algorithm took: ",time2-time1,"s")
-	return([value/norm(value) for value in outputValues], err)
-end
-
-"""
   This method is a more accurate variant of the method
   leastSquaresListOfEquations_quick.
   It uses the Mean Distance (HomotopyContinuation) for determining the
   best-approximating polynomial. Also, it uses a threshold of tau=2.o and
   400 gradient descent steps.
 """
-function leastSquaresListOfEquations(data, listOfDegrees, affine; TOL = 1e-8)
-	time1 = round(Int64, time() * 1000)
+function leastSquaresListOfEquations(data, listOfDegrees, affine; TOL = 1e-8, quick=false)
+	time1 = time()
+	if quick == true
+		maxiter, epochs, threshold = 200, 2, 1.5
+	else
+		maxiter, epochs, threshold = 400, 3, 3
+	end
 	points = affine ? data : [vcat(point,[1]) for point in data]
 	@polyvar var[1:length(points[1])]
 	startValuesEigen, startValuesVander, outputValues, err = [], [], [], Inf
 	numEq, n = sum([entry[2] for entry in listOfDegrees]), maximum([entry[1] for entry in listOfDegrees])
 
 	for entry in listOfDegrees
-		EigenValueStart, EigenValueVander = comparisonOfMethods(entry[1], points, entry[2], 3)
+		EigenValueStart, EigenValueVander = comparisonOfMethods(entry[1], points, entry[2], threshold)
 		append!(startValuesEigen, [[entry[2], EigenValueStart]])
 		append!(startValuesVander, [[entry[2], EigenValueVander]])
 	end
-	startValueCombinations = [makeCombinations(startValuesEigen), makeCombinations(startValuesVander)]
-	#startValueCombinations = [makeCombinations(startValuesVander)]
+
+	startValueCombinations = quick ? [makeCombinations(startValuesEigen)] : [makeCombinations(startValuesEigen), makeCombinations(startValuesVander)]
 
 	@polyvar w[1:binomial(n+length(points[1])-1,n),1:numEq]
 	veronese = affineVeronese(n,var[1:length(data[1])])
@@ -141,11 +86,11 @@ function leastSquaresListOfEquations(data, listOfDegrees, affine; TOL = 1e-8)
 				err = currentError
 				outputValues = [comb for comb in intermediateValues]
 			end
-			currentError>=TOL || return([value/norm(value) for value in outputValues], currentError)
+			currentError>=TOL || break
 
-			for i in 1:3
+			for i in 1:epochs
 				saverArray = sampsonDistance(points, numEq, n, w, intermediateValues)
-				intermediateValues, _ = weightedGradientDescent(points, n, w, [value for value in intermediateValues], numEq, 400, saverArray, zeroEntries)
+				intermediateValues, _ = weightedGradientDescent(points, n, w, [value for value in intermediateValues], numEq, maxiter, saverArray, zeroEntries)
 				result = [vector'*veronese for vector in intermediateValues]
 				currentError = calculateMeanDistanceToVariety(points, result, var)
 				currentError!="dim>0" || break
@@ -157,6 +102,8 @@ function leastSquaresListOfEquations(data, listOfDegrees, affine; TOL = 1e-8)
 			end
 		end
 	end
+	time2 = time()
+	println("The algorithm took: ",time2-time1,"s")
 	_, outputValues = cleanUp(outputValues, listOfDegrees, length(var))
 	return([[round(val/norm(value), digits=6) for val in value] for value in outputValues], err)
 end
