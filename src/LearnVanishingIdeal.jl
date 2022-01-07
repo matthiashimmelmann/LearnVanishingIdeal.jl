@@ -1,7 +1,7 @@
 module LearnVanishingIdeal
-
+#TODO How to make sure that if z in
 import HomotopyContinuation: @polyvar
-import LinearAlgebra: norm
+import LinearAlgebra: norm, rank
 
 export approximateVanishingIdeal,
        approximateVanishingIdeal_maxDegree,
@@ -63,7 +63,7 @@ function leastSquaresListOfEquations_quick(data, listOfDegrees, affine)
 	startValuesEigen = []
 	startValuesVander = []
 	for entry in listOfDegrees
-		EigenValueStart, VanderMondeStart = comparisonOfMethods(entry[1], points,entry[2], 1.3)
+		EigenValueStart, VanderMondeStart = comparisonOfMethods(entry[1], points,entry[2], 1.5)
 		append!(startValuesEigen, [[entry[2], EigenValueStart]])
 		#append!(startValuesVander, [[entry[2], VanderMondeStart]])
 	end
@@ -81,7 +81,10 @@ function leastSquaresListOfEquations_quick(data, listOfDegrees, affine)
 	for combinations in startValueCombinations
 		for combination in combinations
 			combination, zeroEntries = fillUpWithZeros(combination, n, numEq, length(var))
-			intermediateValues = [comb for comb in combination]
+			intermediateValues = [[round(co, digits=6) for co in comn] for comb in combination]
+			if(rank(hcat(intermediateValues))<length(intermediateValues))
+				continue
+			end
 			for i in 1:2
 				saverArray = sampsonDistance(points, numEq, n, w, intermediateValues)
 				intermediateValues, currentError = weightedGradientDescent(points, n, w, [value for value in intermediateValues], numEq, 250, saverArray, zeroEntries)
@@ -107,52 +110,45 @@ end
 """
 function leastSquaresListOfEquations(data, listOfDegrees, affine; TOL = 1e-8)
 	time1 = round(Int64, time() * 1000)
-	if affine == true
-		points = [vcat(point,[1]) for point in data]
-	else
-		points = data
-	end
+	points = affine ? data : [vcat(point,[1]) for point in data]
 	@polyvar var[1:length(points[1])]
-	startValuesEigen = []
-	numEq = sum([entry[2] for entry in listOfDegrees])
-	n = maximum([entry[1] for entry in listOfDegrees])
+	startValuesEigen, startValuesVander, outputValues, err = [], [], [], Inf
+	numEq, n = sum([entry[2] for entry in listOfDegrees]), maximum([entry[1] for entry in listOfDegrees])
 
 	for entry in listOfDegrees
-		EigenValueStart, _ = comparisonOfMethods(entry[1], points,entry[2], 1.5)
+		EigenValueStart, EigenValueVander = comparisonOfMethods(entry[1], points, entry[2], 3)
 		append!(startValuesEigen, [[entry[2], EigenValueStart]])
+		append!(startValuesVander, [[entry[2], EigenValueVander]])
 	end
-	startValueCombinations = [makeCombinations(startValuesEigen)]
+	startValueCombinations = [makeCombinations(startValuesEigen), makeCombinations(startValuesVander)]
+	#startValueCombinations = [makeCombinations(startValuesVander)]
 
 	@polyvar w[1:binomial(n+length(points[1])-1,n),1:numEq]
-	global outputValues
 	veronese = affineVeronese(n,var[1:length(data[1])])
-	outputValues=[]
-	err = Inf
-	println("The search space has dimension: ",binomial(n+length(data[1]),n))
+	println("The search space has dimension: ", binomial(n+length(data[1]),n))
 
 	for combinations in startValueCombinations
 		for combination in combinations
 			combination, zeroEntries = fillUpWithZeros(combination, n, numEq, length(var))
-			result = [vector'*veronese for vector in combination]
+			intermediateValues = [[round(co/norm(comb), digits=14) for co in comb] for comb in combination]
+			cl, intermediateValues = cleanUp(intermediateValues, listOfDegrees, length(var))
+			cl || continue # ideal generators are not minimal
+			result = [vector'*veronese for vector in intermediateValues]
 			currentError = calculateMeanDistanceToVariety(points, result, var)
-			if currentError!=nothing && currentError < err
+			currentError!="dim>0" || continue # the ideal has a higher dimension than anticipated.
+			if currentError < err
 				println("Ansatz without iterations takes the cake! Error: ", currentError)
 				err = currentError
-				outputValues = [comb for comb in combination]
+				outputValues = [comb for comb in intermediateValues]
 			end
-			if currentError<TOL
-				return([value/norm(value) for value in outputValues], currentError)
-			end
-			intermediateValues = [comb for comb in combination]
+			currentError>=TOL || return([value/norm(value) for value in outputValues], currentError)
 
 			for i in 1:3
 				saverArray = sampsonDistance(points, numEq, n, w, intermediateValues)
-				intermediateValues, placeholderError = weightedGradientDescent(points, n, w, [value for value in intermediateValues], numEq, 1000, saverArray, zeroEntries)
+				intermediateValues, _ = weightedGradientDescent(points, n, w, [value for value in intermediateValues], numEq, 400, saverArray, zeroEntries)
 				result = [vector'*veronese for vector in intermediateValues]
 				currentError = calculateMeanDistanceToVariety(points, result, var)
-				if currentError==nothing
-					currentError = placeholderError
-				end
+				currentError!="dim>0" || break
 				if currentError < err
 					println("Ansatz with ", i,  " iterations takes the cake! Error: ",currentError)
 					err = currentError
@@ -161,7 +157,8 @@ function leastSquaresListOfEquations(data, listOfDegrees, affine; TOL = 1e-8)
 			end
 		end
 	end
-	return([value/norm(value) for value in outputValues], err)
+	_, outputValues = cleanUp(outputValues, listOfDegrees, length(var))
+	return([[round(val/norm(value), digits=6) for val in value] for value in outputValues], err)
 end
 
 #=

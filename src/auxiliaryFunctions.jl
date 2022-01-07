@@ -1,6 +1,6 @@
 module auxiliaryFunctions
 
-import LinearAlgebra: zeros, Matrix, svd, pinv, transpose, det, norm, I
+import LinearAlgebra: zeros, Matrix, svd, pinv, transpose, det, norm, I, rank
 import HomotopyContinuation: solve, randn, differentiate, solutions, real_solutions, System, @polyvar
 import DynamicPolynomials: Polynomial, Term
 import Combinatorics: binomial, powerset, multiexponents
@@ -15,11 +15,67 @@ export affineVeronese,
 	makeCombinations,
 	fillUpWithZeros,
 	sampsonDistance,
-	weightedGradientDescent
+	weightedGradientDescent,
+	cleanUp
 
 function addNoise(points, variance)
 	points = [[entry+randn(Float64) for entry in point] for point in points]
 	return(points)
+end
+
+#Take the filledzero list of degrees and return, if the polynomial generators are minimal.
+function cleanUp(intermediateValues, listOfDegrees, varlength)
+	totalexponents = vcat(map(i -> collect(multiexponents(varlength,-i)), -listOfDegrees[end][1]:0)...)
+	array=[]
+	indecesOfBasis = []
+	for q in 1:length(listOfDegrees)
+		currentsum = listOfDegrees[q][1]==listOfDegrees[1][1] ? 0 : sum([en[2] for en in listOfDegrees[1:q-1]])
+		for i in 1:listOfDegrees[q][2]
+			push!(array,intermediateValues[i+currentsum])
+			push!(indecesOfBasis, length(array))
+		end
+		currentexponents = vcat(map(i -> collect(multiexponents(varlength,-i)), -listOfDegrees[q][1]:0)...)
+		for val in 1:sum(totalexponents[1])-sum(currentexponents[1])
+			indexarray = [[findfirst(t->t==adder+entry, totalexponents) for entry in currentexponents] for adder in collect(multiexponents(varlength,val)) ]
+			for i in 1:listOfDegrees[q][2]
+				for j in 1:length(indexarray)
+					helper = [0. for _ in 1:length(totalexponents)]
+					for k in 1:length(indexarray[j])
+						helper[indexarray[j][k]] = intermediateValues[currentsum+i][length(totalexponents)-length(collect(multiexponents(varlength,listOfDegrees[q][1])))+k-1]
+					end
+					push!(array,helper)
+				end
+			end
+		end
+	end
+	#Return true if the rank does not drop (ideal is minimal) and return the reduced ideal generators. Else return false
+	if rank(hcat(array...))==length(array)
+		redarray = reduce([array[ind] for ind in indecesOfBasis], array)
+		return(true, [ar./norm(ar) for ar in redarray])
+	else
+		return(false, [])
+	end
+end
+
+#Calculate f mod I for f not in I
+function reduce(truebasis, array)
+	for i in 1:length(truebasis)
+		element = Base.copy(truebasis[i])
+		fil = sort(filter(t->element!=t, array), rev=true)
+		indeces = [findfirst(t->norm(t)>1e-15, el) for el in fil]
+
+		#Gauss elimination algorithm
+		for j in 1:length(fil)
+			filind = findfirst(t->norm(t)>1e-15, fil[j])
+			if norm(element[filind])>1e-15
+				c1 = fil[j][filind]
+				c2 = element[filind]
+				element = element - fil[j]./c1.*c2
+			end
+			truebasis[i] = element
+		end
+	end
+	return(truebasis)
 end
 
 function jacobianProd(veronese, var)
@@ -98,6 +154,7 @@ function calculateMeanDistanceToVariety(points, equations, var)
 		end
 		systemArray = [det(matrix)]
 		append!(systemArray, equations)
+		systemArray = filter!(t->t!=0,systemArray)
 		F_u = System(systemArray, variables = var, parameters = u)
 	elseif (length(var)-length(equations) > 1)
 		d = [differentiate(equation, var) for equation in equations]
@@ -116,27 +173,32 @@ function calculateMeanDistanceToVariety(points, equations, var)
 			push!(systemArray,det(saverMatrix))
 		end
 		append!(systemArray, equations)
+		systemArray = filter!(t->t!=0,systemArray)
 		F_u = System(systemArray, variables = var, parameters = u)
 	else
 		throw(error("The method is not yet supported for non-complete intersections!"))
 	end
 	p = randn(ComplexF64, length(points[1]))
-	@suppress begin
-		result_p = solve(F_u, target_parameters = p)
-		realSolutions = solve(
-							F_u,
-							solutions(result_p);
-							start_parameters =  p,
-							target_parameters = points,
-							transform_result = (r,u) -> minimum([norm(rel-u) for rel in solutions(r)])
-		)
-		realSolutions = filter(p -> p!=Inf, realSolutions)
-		if !isempty(realSolutions)
-			return(sum(realSolutions)/length(realSolutions))
-		else
-			return(nothing)
+	#@suppress begin
+		try
+			result_p = solve(F_u, target_parameters = p)
+			realSolutions = solve(
+								F_u,
+								solutions(result_p);
+								start_parameters =  p,
+								target_parameters = points,
+								transform_result = (r,u) -> minimum([norm(rel-u) for rel in solutions(r)])
+			)
+			realSolutions = filter(p -> p!=Inf, realSolutions)
+			if !isempty(realSolutions)
+				return(sum(realSolutions)/length(realSolutions))
+			else
+				return("dim>0")
+			end
+		catch e
+			return("dim>0")
 		end
-	end
+	#end
 end
 
 #=
@@ -144,24 +206,24 @@ end
  =#
 function comparisonOfMethods(n,points,numEq,tau)
 	timer = round(Int64, time() * 1000)
+	@polyvar var[1:length(points[1])]
 	projPoints = [vcat(point,[1]) for point in points]
 	@polyvar projVar[1:length(projPoints[1])]
-	@polyvar var[1:length(points[1])]
 
-	veroneseProj = projVeronese(n,var)
-	veroProdProj = sum([projVeronese(n,point)*projVeronese(n,point)' for point in points])/length(points)
-	jacoProdProj = evaluationOfMatrix(jacobianProd(veroneseProj,var), points, var)
+	veroneseProj = projVeronese(n,projVar)
+	veroProdProj = sum([projVeronese(n,point)*projVeronese(n,point)' for point in projPoints])/length(projPoints)
+	jacoProdProj = evaluationOfMatrix(jacobianProd(veroneseProj,projVar), projPoints, projVar)
 	svdSingular = svd(pinv(jacoProdProj)*veroProdProj)
 	firstS = [entry / maximum(svdSingular.S) for entry in svdSingular.S]
-	smallestS = firstS[length(firstS)-numEq+1]*tau
+	smallestS = firstS[length(firstS)-numEq]*tau
 	numberOfSmallSingularValues = length(filter(p-> p<=smallestS, firstS))
 	firstV = [svdSingular.V[:,i] for i in (length(veroneseProj)-numberOfSmallSingularValues+1):length(veroneseProj)]
 	timer2 = round(Int64, time() * 1000)
 	try
-		Vandermonde = vandermonde(length(var),n,points,true)
+		Vandermonde = vandermonde(length(var),n,points,false)
 		svdVander = svd(Vandermonde)
 		secondS = [entry / maximum(svdVander.S) for entry in svdVander.S]
-		secondV = svdVander.V[:,(length(veroneseProj)-numberOfSmallSingularValues+1):length(veroneseProj)]
+		secondV = svdVander.V[:,(length(veroneseProj)-numberOfSmallSingularValues)+1:length(veroneseProj)]
 		secondV = [secondV[:,i] for i in 1:size(secondV)[2]]
 		return(firstV, secondV)
 	catch e
@@ -184,9 +246,9 @@ function weightedGradientDescent(points, n, var, curw0, nEq, maxIter, saverArray
 		return(mat)
 	end
 
-	lossFct = w0Matrix -> sum([(projVeronese(n,points[j])'*w0Matrix)*saverArray[j]*w0Matrix'*projVeronese(n,points[j]) for j in 1:length(points)])/length(points)+0.1sum([entry.^2 for entry in zeroMatrix(w0Matrix)])
+	lossFct = w0Matrix -> sum([(projVeronese(n,vcat(points[j],1))'*w0Matrix)*saverArray[j]*w0Matrix'*projVeronese(n,vcat(points[j],1)) for j in 1:length(points)])/length(points)+100*sum([entry.^2 for entry in zeroMatrix(w0Matrix)])
 	curLoss = lossFct(w0Matrix)
-	dLossFct = w0Matrix -> 2*sum([(projVeronese(n,points[j])*projVeronese(n,points[j])')*w0Matrix*saverArray[j] for j in 1:length(points)])./length(points)+0.2*zeroMatrix(w0Matrix)
+	dLossFct = w0Matrix -> 2*sum([(projVeronese(n,vcat(points[j],1))*projVeronese(n,vcat(points[j],1))')*w0Matrix*saverArray[j] for j in 1:length(points)])./length(points)+200*zeroMatrix(w0Matrix)
 	i = 1
 	while  i < maxIter && norm(dLossFct(w0Matrix)) > 1e-2
 		w0Matrix, curLoss = backtracking_line_search(w0Matrix, dLossFct, lossFct)
@@ -197,7 +259,7 @@ end
 
 function backtracking_line_search(w0Matrix, dLossFct, lossFct; r=1e-3, s=0.7)
 	dLoss = dLossFct(w0Matrix)./norm(dLossFct(w0Matrix))
-	α = 0; t = 0.1; β = 1e20
+	α = 0; t = 0.1; β = 10000
 	while norm(β-α)>1e-15
 		if lossFct(w0Matrix)-lossFct(w0Matrix - t * dLoss) < r*t*norm(dLoss)^2
 			β = t
@@ -213,21 +275,21 @@ function backtracking_line_search(w0Matrix, dLossFct, lossFct; r=1e-3, s=0.7)
 end
 
 function sampsonDistance(points, nEq, n, var, startValues)
-	@polyvar zed[1:length(points[1])]
+	@polyvar zed[1:length(points[1])+1]
 	veronese = projVeronese(n, zed)
 	Qstart = [start'*veronese for start in startValues]
 	matrix = Array{Polynomial,2}(undef, nEq, length(points[1]))
-	for i in 1:nEq
-		matrix[i,:] = differentiate(Qstart[i],zed)
+	for i in 1:nEq, j in 1:nEq
+		matrix[i,j] = differentiate(Qstart[i],zed)'*differentiate(Qstart[j],zed)
 	end
-	prod = matrix.*matrix'
+	#TODO Whatever needs to be done here.
 	helper = Array{Float64,2}(undef, nEq, nEq)
 	saverArray = []
 
 	for point in points
 		for i in 1:nEq
 			for j in 1:nEq
-				helper[i,j] = prod[i,j](zed=>point)
+				helper[i,j] = matrix[i,j](zed=>vcat(point,1))
 			end
 		end
 		append!(saverArray,[pinv(helper)])
@@ -241,8 +303,6 @@ function makeCombinations(values)
 		combis = collect(powerset(entry[2],entry[1],entry[1]))
 		append!(saver, [combis])
 	end
-	#TODO use some sort of cartesian product instead.
-	#(list1,list2,...,listn)->(list1[1]cuplist2[1]cup...cuplistn[1],...)
 	return(cartesianUnion(saver))
 end
 
@@ -287,15 +347,10 @@ function fillUpWithZeros(combination, n, numEq,d)
 	zeroEntries = []
 
 	for i in 1:length(combination)
-		output = Array{Float64, 1}(undef, binomial(n+d-1,n))
-		for j in 1:length(output)
-			if(j<=length(output)-length(combination[i]))
-				output[j]=0
-				append!(zeroEntries,[[i,j]])
-			else
-				output[j] = combination[i][j-length(output)+length(combination[i])]
-			end
-		end
+		output = Array{Float64, 1}(undef, length(combination[end]))
+		output[1:length(output)-length(combination[i])] .= 0
+		output[length(output)-length(combination[i])+1:end] = combination[i]
+		append!(zeroEntries,[[i,j] for j in 1:length(output)-length(combination[i])])
 		combination[i] = [out for out in output]
 	end
 	return(combination, zeroEntries)
