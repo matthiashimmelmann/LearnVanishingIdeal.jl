@@ -26,31 +26,27 @@ end
 #Take the filledzero list of degrees and return, if the polynomial generators are minimal.
 function cleanUp(intermediateValues, listOfDegrees, varlength)
 	totalexponents = vcat(map(i -> collect(multiexponents(varlength,-i)), -listOfDegrees[end][1]:0)...)
-	array=[]
-	indecesOfBasis = []
+	arrayOfCombinations, indecesOfBasis = [], []
 	for q in 1:length(listOfDegrees)
-		currentsum = listOfDegrees[q][1]==listOfDegrees[1][1] ? 0 : sum([en[2] for en in listOfDegrees[1:q-1]])
+		currentDegreeSum = listOfDegrees[q][1]==listOfDegrees[1][1] ? 0 : sum([en[2] for en in listOfDegrees[1:q-1]])
 		for i in 1:listOfDegrees[q][2]
-			push!(array,intermediateValues[i+currentsum])
-			push!(indecesOfBasis, length(array))
+			push!(arrayOfCombinations, intermediateValues[i+currentDegreeSum])
+			push!(indecesOfBasis, length(arrayOfCombinations))
 		end
 		currentexponents = vcat(map(i -> collect(multiexponents(varlength,-i)), -listOfDegrees[q][1]:0)...)
-		for val in 1:sum(totalexponents[1])-sum(currentexponents[1])
-			indexarray = [[findfirst(t->t==adder+entry, totalexponents) for entry in currentexponents] for adder in collect(multiexponents(varlength,val)) ]
-			for i in 1:listOfDegrees[q][2]
-				for j in 1:length(indexarray)
-					helper = [0. for _ in 1:length(totalexponents)]
-					for k in 1:length(indexarray[j])
-						helper[indexarray[j][k]] = intermediateValues[currentsum+i][length(totalexponents)-length(collect(multiexponents(varlength,listOfDegrees[q][1])))+k-1]
-					end
-					push!(array,helper)
-				end
+		for additionvalue in 1:sum(totalexponents[1])-sum(currentexponents[1]), degreeEntry in 1:listOfDegrees[q][2], arrayPos in 1:binomial(varlength+additionvalue-1,additionvalue)
+			occuranceOfPosition = [[findfirst(t->t==adder+entry, totalexponents) for entry in currentexponents] for adder in collect(multiexponents(varlength,additionvalue)) ]
+			helper = [0. for _ in 1:length(totalexponents)]
+			for index in 1:length(occuranceOfPosition[arrayPos])
+				helper[occuranceOfPosition[arrayPos][index]] = intermediateValues[currentDegreeSum+degreeEntry][length(totalexponents)-length(collect(multiexponents(varlength,listOfDegrees[q][1])))+index-1]
 			end
+			push!(arrayOfCombinations,helper)
 		end
 	end
+
 	#Return true if the rank does not drop (ideal is minimal) and return the reduced ideal generators. Else return false
-	if rank(hcat(array...))==length(array)
-		redarray = reduce([array[ind] for ind in indecesOfBasis], array)
+	if rank(hcat(arrayOfCombinations...))==length(arrayOfCombinations)
+		redarray = reduce([arrayOfCombinations[ind] for ind in indecesOfBasis], arrayOfCombinations)
 		return(true, [ar./norm(ar) for ar in redarray])
 	else
 		return(false, [])
@@ -58,24 +54,20 @@ function cleanUp(intermediateValues, listOfDegrees, varlength)
 end
 
 #Calculate f mod I for f not in I
-function reduce(truebasis, array)
-	for i in 1:length(truebasis)
-		element = Base.copy(truebasis[i])
-		fil = sort(filter(t->element!=t, array), rev=true)
-		indeces = [findfirst(t->norm(t)>1e-15, el) for el in fil]
+function reduce(trueBasis, extendedBasis)
+	for i in 1:length(trueBasis)
+		element = Base.copy(trueBasis[i])
+		sortedExtBasis = sort(filter(t->element!=t, extendedBasis), rev=true)
+		indeces = [findfirst(t->norm(t)>1e-15, el) for el in sortedExtBasis]
 
 		#Gauss elimination algorithm
-		for j in 1:length(fil)
-			filind = findfirst(t->norm(t)>1e-15, fil[j])
-			if norm(element[filind])>1e-15
-				c1 = fil[j][filind]
-				c2 = element[filind]
-				element = element - fil[j]./c1.*c2
-			end
-			truebasis[i] = element
+		for j in 1:length(sortedExtBasis)
+			firstNonZero = findfirst(t->norm(t)>1e-15, sortedExtBasis[j])
+			element = norm(element[firstNonZero])>1e-15 ? element-sortedExtBasis[j]./sortedExtBasis[j][firstNonZero].*element[firstNonZero] : element
+			trueBasis[i] = element
 		end
 	end
-	return(truebasis)
+	return(trueBasis)
 end
 
 function jacobianProd(veronese, var)
