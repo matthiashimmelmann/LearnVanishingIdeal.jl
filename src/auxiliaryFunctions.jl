@@ -1,8 +1,7 @@
 module auxiliaryFunctions
 
 import LinearAlgebra: zeros, Matrix, svd, pinv, transpose, det, norm, I, rank
-import HomotopyContinuation: solve, randn, differentiate, solutions, real_solutions, System, @polyvar
-import DynamicPolynomials: Polynomial, Term
+import HomotopyContinuation: solve, randn, differentiate, solutions, real_solutions, System, @var, Expression
 import Combinatorics: binomial, powerset, multiexponents
 import Suppressor: @suppress
 
@@ -72,11 +71,11 @@ end
 
 function jacobianProd(veronese, var)
 	d = length(var)
-	dMatrix = Array{Polynomial, 2}(undef, length(veronese), length(veronese))
+	dMatrix = Array{Expression, 2}(undef, length(veronese), length(veronese))
 	dArray = [collect(differentiate(poly, var) for poly in veronese)][1]
 	for i in 1:size(dMatrix)[1]
 		for j in 1:size(dMatrix)[2]
-			dMatrix[i,j] = Polynomial(differentiate(veronese[i], var)'*differentiate(veronese[j], var))
+			dMatrix[i,j] = Vector{Expression}(differentiate(veronese[i], var))'*Vector{Expression}(differentiate(veronese[j], var))
 		end
 	end
 	return(dMatrix)
@@ -136,10 +135,10 @@ end
 
 function calculateMeanDistanceToVariety(points, equations, var)
 	#HomotopyContinuation: https://www.juliahomotopycontinuation.org/examples/critical-points/
-	@polyvar u[1:length(var)]
+	@var u[1:length(var)]
 	if (length(var)-length(equations) == 1)
 		d = [differentiate(equation, var) for equation in equations]
-		matrix = Array{Polynomial, 2}(undef, length(var), length(var))
+		matrix = Array{Expression, 2}(undef, length(var), length(var))
 		matrix[1,:] = var-u
 		for i in 1:length(d)
 			matrix[i+1,:] = d[i]
@@ -150,14 +149,14 @@ function calculateMeanDistanceToVariety(points, equations, var)
 		F_u = System(systemArray, variables = var, parameters = u)
 	elseif (length(var)-length(equations) > 1)
 		d = [differentiate(equation, var) for equation in equations]
-		matrix = Array{Polynomial, 2}(undef, length(equations)+1, length(var))
+		matrix = Array{Expression, 2}(undef, length(equations)+1, length(var))
 		matrix[1,:] = var-u
 		for i in 1:length(d)
 			matrix[i+1,:] = d[i]
 		end
 		binomialsets = filter(p->length(p)==length(equations)+1, collect(powerset(1:length(var))))
-		saverMatrix=Array{Polynomial,2}(undef,length(equations)+1,length(equations)+1)
-		systemArray=Array{Polynomial,1}(undef,0)
+		saverMatrix=Array{Expression,2}(undef,length(equations)+1,length(equations)+1)
+		systemArray=Array{Expression,1}(undef,0)
 		for entry in binomialsets
 			for i in 1:length(entry)
 				saverMatrix[:,i] = matrix[:, entry[i]]
@@ -198,9 +197,9 @@ end
  =#
 function comparisonOfMethods(n,points,numEq,tau)
 	timer = round(Int64, time() * 1000)
-	@polyvar var[1:length(points[1])]
+	@var var[1:length(points[1])]
 	projPoints = [vcat(point,[1]) for point in points]
-	@polyvar projVar[1:length(projPoints[1])]
+	@var projVar[1:length(projPoints[1])]
 
 	veroneseProj = projVeronese(n,projVar)
 	veroProdProj = sum([projVeronese(n,point)*projVeronese(n,point)' for point in projPoints])/length(projPoints)
@@ -267,10 +266,10 @@ function backtracking_line_search(w0Matrix, dLossFct, lossFct; r=1e-3, s=0.7)
 end
 
 function sampsonDistance(points, nEq, n, var, startValues)
-	@polyvar zed[1:length(points[1])+1]
+	@var zed[1:length(points[1])+1]
 	veronese = projVeronese(n, zed)
 	Qstart = [start'*veronese for start in startValues]
-	matrix = Array{Polynomial,2}(undef, nEq, length(points[1]))
+	matrix = Array{Expression,2}(undef, nEq, length(points[1]))
 	for i in 1:nEq, j in 1:nEq
 		matrix[i,j] = differentiate(Qstart[i],zed)'*differentiate(Qstart[j],zed)
 	end

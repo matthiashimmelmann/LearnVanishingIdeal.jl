@@ -1,6 +1,6 @@
 module LearnVanishingIdeal
 #TODO How to make sure that if z in
-import HomotopyContinuation: @polyvar
+import HomotopyContinuation: @var
 import LinearAlgebra: norm, rank
 
 export approximateVanishingIdeal,
@@ -56,7 +56,7 @@ function leastSquaresListOfEquations(data, listOfDegrees, affine; TOL = 1e-8, qu
 		maxiter, epochs, threshold = 400, 3, 3
 	end
 	points = affine ? data : [vcat(point,[1]) for point in data]
-	@polyvar var[1:length(points[1])]
+	@var var[1:length(points[1])]
 	startValuesEigen, startValuesVander, outputValues, err = [], [], [], Inf
 	numEq, n = sum([entry[2] for entry in listOfDegrees]), maximum([entry[1] for entry in listOfDegrees])
 
@@ -68,7 +68,7 @@ function leastSquaresListOfEquations(data, listOfDegrees, affine; TOL = 1e-8, qu
 
 	startValueCombinations = quick ? [makeCombinations(startValuesEigen)] : [makeCombinations(startValuesEigen), makeCombinations(startValuesVander)]
 
-	@polyvar w[1:binomial(n+length(points[1])-1,n),1:numEq]
+	@var w[1:binomial(n+length(points[1])-1,n),1:numEq]
 	veronese = affineVeronese(n,var[1:length(data[1])])
 	println("The search space has dimension: ", binomial(n+length(data[1]),n))
 
@@ -115,7 +115,7 @@ end
   degrees that make up the degree of the variety.
 """
 function approximateVanishingIdealDegreeVariety(points, degVariety::Int, numEq::Int, quick=false)
-	@polyvar var[1:length(points[1])]
+	@var var[1:length(points[1])]
 	listsOfDegrees = findAllCompositions(numEq, degVariety)
 	error = Inf
 	finaloutput = []
@@ -152,7 +152,7 @@ end
   degrees up to a given terminationDegree and calculates equations in this degree
 """
 function inferringVanishingIdeal(points, terminationDegree, numEq)
-	@polyvar var[1:length(points[1])]
+	@var var[1:length(points[1])]
 	error = Inf
 	outputValues = []
 	errorsInDegrees = []
