@@ -1,6 +1,6 @@
 module LearnVanishingIdeal
 #TODO How to make sure that if z in
-import HomotopyContinuation: @var
+import HomotopyContinuation: @var, evaluate
 import LinearAlgebra: norm, rank
 
 export approximateVanishingIdeal,
@@ -24,6 +24,7 @@ using .auxiliaryFunctions
   of the best-approximating polynomial
 """
 function approximateVanishingIdeal(points, listOfDegrees; quick=false, affine=true)
+	typeof(listOfDegrees)==Vector{Int} || throw(error("listOfDegrees has the wrong type!"))
 	degreeList = findEqListOfDegrees(listOfDegrees)
 	return( leastSquaresListOfEquations( points, degreeList, affine; quick=quick))
 end
@@ -105,7 +106,7 @@ function leastSquaresListOfEquations(data, listOfDegrees, affine; TOL = 1e-8, qu
 	time2 = time()
 	println("The algorithm took: ",time2-time1,"s")
 	_, outputValues = cleanUp(outputValues, listOfDegrees, length(var))
-	return([[round(val/norm(value), digits=6) for val in value] for value in outputValues], err)
+	return([[round(val/norm(value), digits=10) for val in value] for value in outputValues], err)
 end
 
 #=
