@@ -6,15 +6,15 @@ import LinearAlgebra: norm, rank
 export approximateVanishingIdeal,
        approximateVanishingIdeal_maxDegree,
        leastSquaresListOfEquations,
-       leastSquaresListOfEquations_quick,
 	   affineVeronese,
 	   projVeronese,
 	   addNoise,
-	   calculateMeanDistanceToVariety
+	   calculateMeanDistanceToVariety,
+	   @var,
+	   evaluate
 
 include("auxiliaryFunctions.jl")
 using .auxiliaryFunctions
-
 """
   @input The function approximateVanishingIdeal takes a list of points,
   a list of Degrees of the generators of the vanishing ideal and a
@@ -43,8 +43,6 @@ function approximateVanishingIdeal_maxDegree(n, points, numEq, quick=false, affi
 end
 
 """
-  This method is a more accurate variant of the method
-  leastSquaresListOfEquations_quick.
   It uses the Mean Distance (HomotopyContinuation) for determining the
   best-approximating polynomial. Also, it uses a threshold of tau=2.o and
   400 gradient descent steps.
@@ -52,17 +50,17 @@ end
 function leastSquaresListOfEquations(data, listOfDegrees, affine; TOL = 1e-8, quick=false)
 	time1 = time()
 	if quick == true
-		maxiter, epochs, threshold = 200, 2, 1.5
+		maxiter, epochs, threshold = 2500, 2, 1.5
 	else
-		maxiter, epochs, threshold = 400, 3, 3
+		maxiter, epochs, threshold = 25000, 3, 2.5
 	end
-	points = affine ? data : [vcat(point,[1]) for point in data]
+	points = affine ? [vcat(point,[1]) for point in data] : data
 	@var var[1:length(points[1])]
 	startValuesEigen, startValuesVander, outputValues, err = [], [], [], Inf
 	numEq, n = sum([entry[2] for entry in listOfDegrees]), maximum([entry[1] for entry in listOfDegrees])
 
 	for entry in listOfDegrees
-		EigenValueStart, EigenValueVander = comparisonOfMethods(entry[1], points, entry[2], threshold)
+		EigenValueStart, EigenValueVander = comparisonOfMethods(entry[1], points, entry[2], threshold; affine=affine)
 		append!(startValuesEigen, [[entry[2], EigenValueStart]])
 		append!(startValuesVander, [[entry[2], EigenValueVander]])
 	end
@@ -70,8 +68,8 @@ function leastSquaresListOfEquations(data, listOfDegrees, affine; TOL = 1e-8, qu
 	startValueCombinations = quick ? [makeCombinations(startValuesEigen)] : [makeCombinations(startValuesEigen), makeCombinations(startValuesVander)]
 
 	@var w[1:binomial(n+length(points[1])-1,n),1:numEq]
-	veronese = affineVeronese(n,var[1:length(data[1])])
-	println("The search space has dimension: ", binomial(n+length(data[1]),n))
+	veronese = projVeronese(n,var[1:length(points[1])])
+	println("The search space has dimension: ", length(veronese))
 
 	for combinations in startValueCombinations
 		for combination in combinations
@@ -83,7 +81,7 @@ function leastSquaresListOfEquations(data, listOfDegrees, affine; TOL = 1e-8, qu
 			currentError = calculateMeanDistanceToVariety(points, result, var)
 			currentError!="dim>0" || continue # the ideal has a higher dimension than anticipated.
 			if currentError < err
-				println("Ansatz without iterations takes the cake! Error: ", currentError)
+				println("Ansatz without iterations wins out! True Error: ", currentError)
 				err = currentError
 				outputValues = [comb for comb in intermediateValues]
 			end
@@ -96,7 +94,7 @@ function leastSquaresListOfEquations(data, listOfDegrees, affine; TOL = 1e-8, qu
 				currentError = calculateMeanDistanceToVariety(points, result, var)
 				currentError!="dim>0" || break
 				if currentError < err
-					println("Ansatz with ", i,  " iterations takes the cake! Error: ",currentError)
+					println("Ansatz with ", i,  " iterations wins out! Error: ",currentError)
 					err = currentError
 					outputValues = [vector for vector in intermediateValues]
 				end

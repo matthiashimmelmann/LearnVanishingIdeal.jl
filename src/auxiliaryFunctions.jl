@@ -109,7 +109,7 @@ end
 function evaluationOfMatrix(gamma, Z, var)
 	output = zeros(size(gamma)[1], size(gamma)[2])
 	for iter in 1:length(Z)
-		helper = Array{Float64, 2}(undef, size(gamma)[1], size(gamma)[2])
+		helper = Array{ComplexF64, 2}(undef, size(gamma)[1], size(gamma)[2])
 		for i in 1:size(output)[1]
 			for j in 1:size(output)[2]
 				helper[i,j] = (gamma[i,j])(var=>Z[iter])
@@ -195,15 +195,14 @@ end
 #=
  Output is a good estimate for the starting vector of our Least Square Iteration
  =#
-function comparisonOfMethods(n,points,numEq,tau)
+function comparisonOfMethods(n,points,numEq,tau; affine=true)
 	timer = round(Int64, time() * 1000)
 	@var var[1:length(points[1])]
-	projPoints = [vcat(point,[1]) for point in points]
-	@var projVar[1:length(projPoints[1])]
+	@var projVar[1:length(points[1])]
 
 	veroneseProj = projVeronese(n,projVar)
-	veroProdProj = sum([projVeronese(n,point)*projVeronese(n,point)' for point in projPoints])/length(projPoints)
-	jacoProdProj = evaluationOfMatrix(jacobianProd(veroneseProj,projVar), projPoints, projVar)
+	veroProdProj = sum([projVeronese(n,point)*projVeronese(n,point)' for point in points])/length(points)
+	jacoProdProj = evaluationOfMatrix(jacobianProd(veroneseProj,projVar), points, projVar)
 	svdSingular = svd(pinv(jacoProdProj)*veroProdProj)
 	firstS = [entry / maximum(svdSingular.S) for entry in svdSingular.S]
 	smallestS = firstS[length(firstS)-numEq]*tau
@@ -211,7 +210,7 @@ function comparisonOfMethods(n,points,numEq,tau)
 	firstV = [svdSingular.V[:,i] for i in (length(veroneseProj)-numberOfSmallSingularValues+1):length(veroneseProj)]
 	timer2 = round(Int64, time() * 1000)
 	try
-		Vandermonde = vandermonde(length(var),n,points,false)
+		Vandermonde = vandermonde(length(var),n,points,proj=!affine)
 		svdVander = svd(Vandermonde)
 		secondS = [entry / maximum(svdVander.S) for entry in svdVander.S]
 		secondV = svdVander.V[:,(length(veroneseProj)-numberOfSmallSingularValues)+1:length(veroneseProj)]
@@ -219,30 +218,38 @@ function comparisonOfMethods(n,points,numEq,tau)
 		return(firstV, secondV)
 	catch e
 		return(firstV, firstV)
-		prinln("Error caught",e)
+		println("Error caught",e)
 	end
 end
 
 function weightedGradientDescent(points, n, var, curw0, nEq, maxIter, saverArray, zeroEntries)
 
-	w0Matrix = Array{Float64,2}(undef,length(curw0[1]),length(curw0))
+	global w0Matrix = Array{ComplexF64,2}(undef,length(curw0[1]),length(curw0))
 	for i in 1:length(curw0)
-		w0Matrix[:,i] = curw0[i]
+		global w0Matrix[:,i] = curw0[i]
 	end
 	function zeroMatrix(w0Matrix)
 		mat = zeros(Float64,length(curw0[1]),length(curw0))
 		for zero in zeroEntries
-			mat[zero[2],zero[1]] = w0Matrix[zero[2],zero[1]]
+			mat[zero[2],zero[1]] = norm(w0Matrix[zero[2],zero[1]])
 		end
 		return(mat)
 	end
 
-	lossFct = w0Matrix -> sum([(projVeronese(n,vcat(points[j],1))'*w0Matrix)*saverArray[j]*w0Matrix'*projVeronese(n,vcat(points[j],1)) for j in 1:length(points)])/length(points)+100*sum([entry.^2 for entry in zeroMatrix(w0Matrix)])
-	curLoss = lossFct(w0Matrix)
-	dLossFct = w0Matrix -> 2*sum([(projVeronese(n,vcat(points[j],1))*projVeronese(n,vcat(points[j],1))')*w0Matrix*saverArray[j] for j in 1:length(points)])./length(points)+200*zeroMatrix(w0Matrix)
+	veroProj = [projVeronese(n,points[j]) for j in 1:length(points)]
+	lossFct = w0Matrix -> sum([norm((veroProj[j]'*w0Matrix)*saverArray[j]*w0Matrix'*veroProj[j]) for j in 1:length(points)])/length(points)#+sum([entry.^2 for entry in zeroMatrix(w0Matrix)])
+	global curLoss = lossFct(w0Matrix)
+	dLossFct = w0Matrix -> 2*sum([(veroProj[j]*veroProj[j]')*w0Matrix*saverArray[j] for j in 1:length(points)])./length(points)#+2*zeroMatrix(w0Matrix)
 	i = 1
+	global iter_const = 0.0005
 	while  i < maxIter && norm(dLossFct(w0Matrix)) > 1e-2
-		w0Matrix, curLoss = backtracking_line_search(w0Matrix, dLossFct, lossFct)
+		w0Matrix = w0Matrix - iter_const*dLossFct(w0Matrix) #w0Matrix, curLoss = backtracking_line_search(w0Matrix, dLossFct, lossFct)
+		if lossFct(w0Matrix) < curLoss
+			global iter_const = iter_const*1.2
+			global curLoss = lossFct(w0Matrix)
+		else
+			global iter_const = iter_const/2
+		end
 		i=i+1
 	end
 	return([w0Matrix[:,i]./norm(w0Matrix[:,i]) for i in 1:size(w0Matrix)[2]], curLoss)
@@ -251,8 +258,8 @@ end
 function backtracking_line_search(w0Matrix, dLossFct, lossFct; r=1e-3, s=0.7)
 	dLoss = dLossFct(w0Matrix)./norm(dLossFct(w0Matrix))
 	α = 0; t = 0.1; β = 10000
-	while norm(β-α)>1e-15
-		if lossFct(w0Matrix)-lossFct(w0Matrix - t * dLoss) < r*t*norm(dLoss)^2
+	while norm(β-α)>1e-12
+		if norm(lossFct(w0Matrix)-lossFct(w0Matrix - t * dLoss)) < r*t*norm(dLoss)^2
 			β = t
 			t = (α+β)/2
 		elseif s*norm(dLoss'*dLoss)<norm(dLoss'*dLossFct(w0Matrix - t*dLoss)./norm(dLossFct(w0Matrix - t*dLoss)))
@@ -262,11 +269,11 @@ function backtracking_line_search(w0Matrix, dLossFct, lossFct; r=1e-3, s=0.7)
 			break
 		end
 	end
-	return(w0Matrix - t * dLoss, lossFct(w0Matrix - t * dLoss))
+	return((w0Matrix - t * dLoss), lossFct( (w0Matrix - t * dLoss)))
 end
 
 function sampsonDistance(points, nEq, n, var, startValues)
-	@var zed[1:length(points[1])+1]
+	@var zed[1:length(points[1])]
 	veronese = projVeronese(n, zed)
 	Qstart = [start'*veronese for start in startValues]
 	matrix = Array{Expression,2}(undef, nEq, length(points[1]))
@@ -274,13 +281,13 @@ function sampsonDistance(points, nEq, n, var, startValues)
 		matrix[i,j] = differentiate(Qstart[i],zed)'*differentiate(Qstart[j],zed)
 	end
 	#TODO Whatever needs to be done here.
-	helper = Array{Float64,2}(undef, nEq, nEq)
+	helper = Array{ComplexF64,2}(undef, nEq, nEq)
 	saverArray = []
 
 	for point in points
 		for i in 1:nEq
 			for j in 1:nEq
-				helper[i,j] = matrix[i,j](zed=>vcat(point,1))
+				helper[i,j] = matrix[i,j](zed=>point)
 			end
 		end
 		append!(saverArray,[pinv(helper)])
@@ -338,7 +345,7 @@ function fillUpWithZeros(combination, n, numEq,d)
 	zeroEntries = []
 
 	for i in 1:length(combination)
-		output = Array{Float64, 1}(undef, length(combination[end]))
+		output = Array{ComplexF64, 1}(undef, length(combination[end]))
 		output[1:length(output)-length(combination[i])] .= 0
 		output[length(output)-length(combination[i])+1:end] = combination[i]
 		append!(zeroEntries,[[i,j] for j in 1:length(output)-length(combination[i])])
